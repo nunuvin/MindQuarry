@@ -1,3 +1,45 @@
+/* Sidebar nav item highlighting: single rectangle for hover/active in both themes */
+.sidebar-nav-item {
+  position: relative;
+  cursor: pointer;
+  background: none;
+  transition: background 0.15s;
+}
+.sidebar-nav-item:hover,
+.sidebar-nav-item:focus,
+.sidebar-nav-item[aria-current="page"],
+.sidebar-nav-item[data-active="true"] {
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+}
+.sidebar-nav-item .sidebar-icon,
+.sidebar-nav-item [data-slot="sidebar-icon"] {
+  color: var(--color-muted-foreground);
+  transition: color 0.15s;
+}
+.sidebar-nav-item:hover .sidebar-icon,
+.sidebar-nav-item:focus .sidebar-icon,
+.sidebar-nav-item[aria-current="page"] .sidebar-icon,
+.sidebar-nav-item[data-active="true"] .sidebar-icon {
+  color: var(--color-accent-foreground);
+}
+/* Ensure theme switcher button is white in dark mode */
+.dark .theme-switcher-btn {
+  background-color: #fff !important;
+  border-color: #23232a !important;
+}
+/* Set global background to true black in dark mode only for body and main */
+.dark body, .dark main {
+  background-color: #000 !important;
+}
+/* Force navigation menu and sidebar backgrounds to use true black in dark mode, overriding shadcn defaults */
+.dark [data-slot="navigation-menu"],
+.dark [data-slot="navigation-menu-list"],
+.dark [data-slot="sidebar"],
+.dark .sidebar,
+.dark .bg-background {
+  background-color: #000 !important;
+}
 /* Override shadcn/ui NavigationMenu to ensure full width in sidebar */
 [data-slot="navigation-menu"],
 [data-slot="navigation-menu-list"] {
@@ -114,37 +156,48 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --background: #000000;
+  --foreground: #fafafa;
+  --card: #111112;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --primary: #6366f1;
+  --primary-foreground: #fff;
+  --secondary: #18181b;
+  --secondary-foreground: #fafafa;
+  --muted: #18181b;
+  --muted-foreground: #e5e5e5;
+  --accent: #23232a;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --border: #23232a;
+  --input: #23232a;
+  --ring: #6366f1;
+  --chart-1: #fbbf24;
+  --chart-2: #34d399;
+  --chart-3: #60a5fa;
+  --chart-4: #f472b6;
+  --chart-5: #f87171;
+  --sidebar: #000000;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #6366f1;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #18181b;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #23232a;
+  --sidebar-ring: #6366f1;
+}
+
+/* Navbar searchbar: slightly brighter in dark mode */
+.dark [data-slot="input"] {
+  background-color: #23232a !important;
+  color: #fff !important;
+  border-color: #333 !important;
+}
+/* Sidebar icon color override for dark mode */
+.dark .sidebar-icon, .dark [data-slot="sidebar-icon"] {
+  color: #fff !important;
 }
 
 @layer base {

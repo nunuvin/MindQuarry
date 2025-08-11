@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, User, Settings } from "lucide-react";
+import ThemeSwitcher from "./theme-switcher";
 import { cn } from "@/lib/utils";
 import {
     NavigationMenu,
@@ -24,11 +25,8 @@ export default function Sidebar() {
                 "h-screen sticky top-0 border-r flex flex-col transition-[width] ease-in-out",
                 isExpanded ? "duration-100 w-50" : "duration-50 w-20"
             )}
-
             aria-label="Sidebar navigation"
         >
-
-
             {/* Navigation with Chevron as first item */}
             <nav className="flex-grow w-full">
                 <div className="w-full">
@@ -54,9 +52,9 @@ export default function Sidebar() {
                                     <NavigationMenuLink href={item.href} className="block w-full">
                                         <div
                                             className={cn(
-                                                "flex items-center w-full h-11 rounded-lg transition-colors group",
+                                                "flex items-center w-full h-11 rounded-lg transition-colors group sidebar-nav-item",
                                                 isExpanded ? "px-4" : "justify-center",
-                                                "hover:bg-muted text-foreground"
+                                                "text-foreground"
                                             )}
                                         >
                                             {isExpanded ? (
@@ -72,13 +70,13 @@ export default function Sidebar() {
                                                         {item.name}
                                                     </span>
                                                     <div className="flex-shrink-0 flex items-center justify-center h-9 w-9 rounded-md border ml-2">
-                                                        <item.icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
+                                                        <item.icon className="h-5 w-5 text-zinc-700 dark:text-zinc-400" />
                                                     </div>
                                                 </>
                                             ) : (
                                                 <div className="flex items-center justify-center w-full">
                                                     <div className="flex-shrink-0 flex items-center justify-center h-9 w-9 rounded-md border">
-                                                        <item.icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
+                                                        <item.icon className="h-5 w-5 text-zinc-700 dark:text-zinc-400" />
                                                     </div>
                                                 </div>
                                             )}
@@ -90,6 +88,14 @@ export default function Sidebar() {
                     </NavigationMenu>
                 </div>
             </nav>
+            {/* Theme Switcher above the logo area */}
+            <div className="flex flex-col items-center w-full">
+                <ThemeSwitcher />
+            </div>
+            {/* Logo area (keep empty or add logo if needed) */}
+            <div className="flex flex-col items-center mb-32">
+                {/* Place Next.js logo here if needed */}
+            </div>
         </aside>
     );
 }
