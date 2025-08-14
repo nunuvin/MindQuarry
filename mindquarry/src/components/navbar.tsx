@@ -1,7 +1,13 @@
 import { Input } from "@/components/ui/input";
 import { SearchIcon, CornerDownLeft } from "lucide-react";
+import UserMenu from "./user-menu";
 
 export default function Navbar() {
+    // TODO: Replace with real user session logic
+    const user = typeof window !== "undefined" && window.localStorage.getItem("mockUser")
+        ? JSON.parse(window.localStorage.getItem("mockUser")!)
+        : undefined;
+
     return (
         <nav className="sticky top-0 z-50 shadow-3xs flex items-center justify-between p-4 border-b">
             <div><a href="/">MindQuarry</a></div>
@@ -29,7 +35,9 @@ export default function Navbar() {
                 </div>
             </div>
 
-            <div className="ml-auto pr-4">User</div>
-        </nav >
+            <div className="ml-auto pr-4">
+                <UserMenu user={user} />
+            </div>
+        </nav>
     );
 }
