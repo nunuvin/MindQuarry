@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
 
 
 
@@ -23,6 +24,7 @@ export default function SignupPage() {
     const [error, setError] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
+    const [username, setUsername] = useState("");
 
 
     const passwordLengthValid = password.length >= 8;
@@ -47,10 +49,22 @@ export default function SignupPage() {
         return "";
     };
 
-    const handleSignup = (e: React.FormEvent) => {
+    const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
-        // TODO: Implement signup logic
+        if (!passwordValid || !passwordsMatch) return;
+        try {
+            const session = await authClient.signUp.email({
+                email,
+                password,
+                username,
+                name: username, // Use username as name if no separate name field
+            });
+            if (session.error) throw new Error(session.error.message || "Signup failed");
+            window.location.href = "/";
+        } catch (err: any) {
+            setError(err.message || "Signup failed");
+        }
     };
 
     return (
@@ -60,6 +74,18 @@ export default function SignupPage() {
                 className="bg-card p-8 rounded-lg shadow-md w-full max-w-md flex flex-col gap-6 border"
             >
                 <h1 className="text-2xl font-bold text-center mb-2">Create your account</h1>
+                <div className="flex flex-col gap-2">
+                    <label htmlFor="username" className="text-sm font-medium">Username</label>
+                    <Input
+                        id="username"
+                        type="text"
+                        autoComplete="username"
+                        required
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        placeholder="your username"
+                    />
+                </div>
                 <div className="flex flex-col gap-2">
                     <label htmlFor="email" className="text-sm font-medium">Email</label>
                     <Input
@@ -119,6 +145,12 @@ export default function SignupPage() {
                                 {passwordSpecialValid ? "-" : <span className="font-bold">×</span>}
                             </span>
                             <span>At least 1 special character <span className="text-xs text-muted-foreground">(optional)</span></span>
+                        </li>
+                        <li className={`flex items-center gap-2 ${/[A-Z]/.test(password) ? "text-teal-600 line-through" : "text-teal-600"}`}>
+                            <span className="inline-block w-4 text-center">
+                                {/[A-Z]/.test(password) ? "-" : <span className="font-bold">×</span>}
+                            </span>
+                            At least 1 capital letter <span className="text-xs text-muted-foreground">(optional)</span>
                         </li>
                     </ul>
                 </div>

@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MindQuarry App
 
-## Getting Started
+This folder contains the Next.js application for MindQuarry, a Stack Overflow-like product in progress.
 
-First, run the development server:
+## Stack
+
+The current app stack from `package.json` is:
+
+- Next.js 15 App Router
+- React 19
+- TypeScript 5
+- Better Auth
+- Kysely with PostgreSQL
+- Tailwind CSS v4
+- shadcn/ui-style primitives with Radix and Lucide
+
+## Scripts
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run start
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`npm run dev` starts the app with Turbopack.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The code currently reads `DATABASE_URL` in `src/lib/db.ts`.
 
-## Learn More
+Depending on how Better Auth is configured for the target environment, standard Better Auth environment variables may also be needed during local development or deployment.
 
-To learn more about Next.js, take a look at the following resources:
+## Current Implementation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Implemented:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Better Auth server configuration in `src/lib/auth.ts`
+- Better Auth client configuration in `src/lib/auth-client.ts`
+- Next.js auth handler route in `src/app/api/auth/[...all]/route.ts`
+- Login page in `src/app/login/page.tsx`
+- Signup page in `src/app/signup/page.tsx`
+- Session helper in `src/lib/authHelpers.ts`
+- Protected user profile route in `src/app/users/[username]/page.tsx`
+- Shared navigation chrome in `src/components/`
 
-## Deploy on Vercel
+Not implemented yet:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Real question listing and detail pages
+- Answer creation and voting
+- Tagging, moderation, and reputation flows
+- Search backed by real domain data
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Folder Guide
+
+- `src/app/`: routes, layouts, and page-level composition
+- `src/components/`: shared UI and navigation
+- `src/lib/`: auth, database, and helpers
+- `public/`: static assets
+
+See the README files inside `src/` for more folder-specific notes.
