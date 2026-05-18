@@ -7,8 +7,8 @@
 To set up your Postgres database for MindQuarry, execute these files against your database in the following order:
 
 1. `extensions.sql` - Enables necessary extensions (pgcrypto, unaccent, pg_trgm, pg_cron).
-2. `mqauth_init.sql` - Bootstraps the Better Auth core tables in the `mqauth` schema.
-3. `core_schema.sql` - Bootstraps all the extended MindQuarry Q&A, Moderation, and Messaging tables.
+2. `mqauth_init.sql` - Bootstraps the Better Auth core tables in the secure `mq_auth` schema.
+3. `core_schema.sql` - Bootstraps all the extended MindQuarry Q&A, Moderation, and Messaging tables into the `mq_public` schema.
 
 Example using `psql`:
 
