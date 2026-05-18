@@ -188,3 +188,11 @@ CREATE TABLE IF NOT EXISTS mqauth.global_admins (
     granted_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- For invite mode support
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='mqauth' AND table_name='quarries' AND column_name='is_invite_only') THEN
+        ALTER TABLE mqauth.quarries ADD COLUMN is_invite_only BOOLEAN DEFAULT false;
+    END IF;
+END $$;

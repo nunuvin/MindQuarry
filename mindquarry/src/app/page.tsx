@@ -1,13 +1,35 @@
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { getSiteSettings } from "@/lib/settings";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
     const settings = await getSiteSettings();
+    const rawHeaders = await headers();
+    const session = await auth.api.getSession({ headers: rawHeaders });
+    const resolvedParams = await searchParams;
+    const sort = resolvedParams.sort === "top" ? "top" : "new";
 
-    // Fetch the main feed logic (recently active / top scored depending on how complex we want this to be initially)
-    // For now, let's fetch the most recent non-hidden queries globally.
-    const queries = await db.selectFrom("queries")
+    let followFeed: any[] = [];
+    if (session?.user) {
+        followFeed = await db.selectFrom("queries")
+            .leftJoin("user", "user.id", "queries.user_id")
+            .leftJoin("quarries", "quarries.id", "queries.quarry_id")
+            .innerJoin("follows", "follows.following_id", "queries.user_id")
+            .select([
+                "queries.id", "queries.title", "queries.body", "queries.score", "queries.views",
+                "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
+                "quarries.name as quarry_name"
+            ])
+            .where("follows.follower_id", "=", session.user.id)
+            .where("queries.is_hidden", "=", false)
+            .orderBy("queries.created_at", "desc")
+            .limit(5)
+            .execute();
+    }
+
+    let queriesQuery = db.selectFrom("queries")
         .leftJoin("user", "user.id", "queries.user_id")
         .leftJoin("quarries", "quarries.id", "queries.quarry_id")
         .select([
@@ -15,19 +37,39 @@ export default async function Home() {
             "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
             "quarries.name as quarry_name"
         ])
-        .where("queries.is_hidden", "=", false)
-        .orderBy("queries.created_at", "desc")
-        .limit(20)
-        .execute();
+        .where("queries.is_hidden", "=", false);
+
+    if (sort === "top") {
+        queriesQuery = queriesQuery.orderBy("queries.score", "desc").orderBy("queries.created_at", "desc");
+    } else {
+        queriesQuery = queriesQuery.orderBy("queries.created_at", "desc");
+    }
+
+    const queries = await queriesQuery.limit(20).execute();
 
     return (
         <div className="max-w-5xl mx-auto mt-8 p-4 grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="md:col-span-3 space-y-6">
+                {followFeed.length > 0 && (
+                    <div className="mb-12 p-6 bg-blue-50 dark:bg-blue-950 border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
+                        <h2 className="font-black uppercase tracking-tight mb-4 border-b-2 border-black/10 dark:border-white/10 pb-2">From Your Network</h2>
+                        <div className="flex flex-row overflow-x-auto gap-4 pb-2 snap-x">
+                            {followFeed.map(fq => (
+                                <Link href={`/q/${fq.quarry_name}/query/${fq.id}`} key={fq.id} className="snap-start shrink-0 w-[280px] p-4 bg-card border-2 border-black dark:border-white hover:-translate-y-1 transition-transform">
+                                    <div className="text-xs font-bold text-blue-500 mb-1">q/{fq.quarry_name}</div>
+                                    <h3 className="font-bold line-clamp-2 leading-tight mb-2">{fq.title}</h3>
+                                    <div className="text-xs font-bold text-muted-foreground">By {fq.displayUsername || fq.username || fq.name}</div>
+                                </Link>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex items-center justify-between border-b-[3px] border-black dark:border-white pb-2 mb-6">
                     <h1 className="text-3xl font-black uppercase tracking-tight">Main Feed</h1>
                     <div className="flex gap-2">
-                        <span className="font-bold border-2 border-black dark:border-white px-3 py-1 bg-black text-white dark:bg-white dark:text-black">New</span>
-                        <span className="font-bold border-2 border-black dark:border-white px-3 py-1 cursor-not-allowed opacity-50">Top</span>
+                        <Link href="/?sort=new" className={`font-bold border-2 border-black dark:border-white px-3 py-1 transition-colors ${sort === 'new' ? 'bg-black text-white dark:bg-white dark:text-black' : 'hover:bg-muted'}`}>New</Link>
+                        <Link href="/?sort=top" className={`font-bold border-2 border-black dark:border-white px-3 py-1 transition-colors ${sort === 'top' ? 'bg-black text-white dark:bg-white dark:text-black' : 'hover:bg-muted'}`}>Top</Link>
                     </div>
                 </div>
 

@@ -23,6 +23,7 @@ export default async function NewQuarryPage() {
 
         const name = formData.get("name") as string;
         const description = formData.get("description") as string;
+        const is_invite_only = formData.get("is_invite_only") === "on";
 
         if (!name || name.includes(" ")) {
             return; // In real app, return form error
@@ -34,6 +35,7 @@ export default async function NewQuarryPage() {
                 id: generateUUID(),
                 name: name.toLowerCase(),
                 description,
+                is_invite_only,
             }).returning(["id", "name"]).executeTakeFirst();
 
             if (quarry) {
@@ -67,6 +69,10 @@ export default async function NewQuarryPage() {
                 <div>
                     <label className="block font-bold mb-2">Description</label>
                     <textarea name="description" rows={4} className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500" placeholder="What is this community about?"></textarea>
+                </div>
+                <div className="flex items-center gap-3">
+                    <input type="checkbox" id="is_invite_only" name="is_invite_only" className="w-5 h-5 border-2 border-black dark:border-white accent-black dark:accent-white" />
+                    <label htmlFor="is_invite_only" className="font-bold cursor-pointer">Make this Quarry Invite-Only</label>
                 </div>
                 <button type="submit" className="cursor-pointer w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
                     Create Quarry

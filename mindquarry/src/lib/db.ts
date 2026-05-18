@@ -103,6 +103,7 @@ interface QuarriesTable {
     min_rep_to_post: number | null;
     min_rep_to_reply: number | null;
     custom_ban_template: string | null;
+    is_invite_only: boolean | null;
     created_at: Date | null;
 }
 

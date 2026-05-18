@@ -67,6 +67,29 @@ export default async function MessagesPage() {
         const targetUser = await db.selectFrom("user").select("id").where("username", "=", targetUsername).executeTakeFirst();
         if (!targetUser || targetUser.id === session.user.id) return; // In real app: show error
 
+        // Check messaging privacy
+        const targetProfile = await db.selectFrom("profiles").select("messaging_privacy").where("user_id", "=", targetUser.id).executeTakeFirst();
+        const privacy = targetProfile?.messaging_privacy || 'anyone';
+
+        // Mutual follow bypasses all
+        const isMutual = await db.selectFrom("follows").select("is_mutual").where("follower_id", "=", session.user.id).where("following_id", "=", targetUser.id).executeTakeFirst();
+
+        if (!isMutual?.is_mutual) {
+            if (privacy === 'mutuals') {
+                return; // Blocked: target requires mutual follow
+            }
+            if (privacy === 'quarry_members') {
+                // Check if they share any quarry
+                const sharedQuarry = await db.selectFrom("quarry_members as qm1")
+                    .innerJoin("quarry_members as qm2", "qm1.quarry_id", "qm2.quarry_id")
+                    .select("qm1.quarry_id")
+                    .where("qm1.user_id", "=", session.user.id)
+                    .where("qm2.user_id", "=", targetUser.id)
+                    .executeTakeFirst();
+                if (!sharedQuarry) return; // Blocked: no shared quarry
+            }
+        }
+
         const convId = generateUUID();
 
         await db.transaction().execute(async (trx) => {
@@ -87,7 +110,12 @@ export default async function MessagesPage() {
 
     return (
         <div className="max-w-4xl mx-auto mt-8 p-4">
-            <h1 className="text-3xl font-black uppercase mb-8 border-b-[3px] border-black dark:border-white pb-2">Inbox</h1>
+            <div className="flex justify-between items-center mb-8 border-b-[3px] border-black dark:border-white pb-2">
+                <h1 className="text-3xl font-black uppercase">Inbox</h1>
+                <Link href="/messages/new" className="px-4 py-2 font-bold border-[3px] border-black dark:border-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors cursor-pointer shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
+                    New Group Chat
+                </Link>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div className="md:col-span-1 space-y-6">

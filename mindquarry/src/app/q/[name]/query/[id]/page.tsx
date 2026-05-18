@@ -12,8 +12,21 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
 
     const resolvedParams = await params;
 
-    const quarry = await db.selectFrom("quarries").select(["id", "name"]).where("name", "=", resolvedParams.name).executeTakeFirst();
+    const quarry = await db.selectFrom("quarries").select(["id", "name", "is_invite_only"]).where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
+
+    if (quarry.is_invite_only) {
+        if (!session?.user) redirect("/login");
+        const membership = await db.selectFrom("quarry_members").where("quarry_id", "=", quarry.id).where("user_id", "=", session.user.id).executeTakeFirst();
+        if (!membership) {
+            return (
+                <div className="max-w-4xl mx-auto mt-12 p-12 text-center border-2 border-black dark:border-white">
+                    <h1 className="text-2xl font-black uppercase mb-4 text-red-500">Private Community</h1>
+                    <p>This Quarry is invite-only. You must be added by an admin to view its contents or participate.</p>
+                </div>
+            );
+        }
+    }
 
     const query = await db.selectFrom("queries")
         .leftJoin("user", "user.id", "queries.user_id")
@@ -67,6 +80,27 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         }
     }
 
+    async function acceptAnswer(formData: FormData) {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) return;
+        if (session.user.id !== query!.author_id) return; // Only author can accept
+
+        const answerId = formData.get("answer_id") as string;
+        if (!answerId) return;
+
+        // Toggle logic: if already accepted, unaccept it.
+        const currentAccept = query!.accepted_answer_id;
+        if (currentAccept === answerId) {
+            await db.updateTable("queries").set({ accepted_answer_id: null }).where("id", "=", query!.id).execute();
+        } else {
+            await db.updateTable("queries").set({ accepted_answer_id: answerId }).where("id", "=", query!.id).execute();
+        }
+
+        revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
+    }
+
     async function voteQuery(formData: FormData) {
         "use server";
         const rawHeaders = await headers();
@@ -110,32 +144,51 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                 )}
                             </div>
                             <div className="flex-1">
-                                <div className="text-xs font-bold text-muted-foreground mb-2">
-                                    {a.displayUsername || a.username || a.name} • {a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}
+                                <div className="text-xs font-bold text-muted-foreground mb-2 flex justify-between">
+                                    <span>{a.displayUsername || a.username || a.name} • {a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}</span>
+                                    <label htmlFor={`collapse-${a.id}`} className="cursor-pointer px-2 border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black">
+                                        +/-
+                                    </label>
                                 </div>
-                                <p className="whitespace-pre-wrap">{a.body}</p>
 
-                                {session?.user && (
-                                    <div className="mt-4 pt-4 border-t-2 border-black/10 dark:border-white/10 flex gap-4 text-sm font-bold">
-                                        <label htmlFor={`reply-${a.id}`} className="cursor-pointer hover:underline text-blue-500">Reply</label>
-                                    </div>
-                                )}
+                                <input type="checkbox" id={`collapse-${a.id}`} className="peer hidden" />
 
-                                {session?.user && (
-                                    <div className="mt-4 hidden has-[:checked]:block">
-                                        <input type="checkbox" id={`reply-${a.id}`} className="peer hidden" />
-                                        <form action={submitAnswer} className="mt-2 space-y-2">
-                                            <input type="hidden" name="parent_id" value={a.id} />
-                                            <textarea name="body" required rows={3} className="w-full p-2 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Write a reply..."></textarea>
-                                            <button type="submit" className="px-4 py-2 bg-blue-500 text-white font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] cursor-pointer hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all text-xs">
-                                                Post Reply
-                                            </button>
-                                        </form>
+                                <div className="peer-checked:hidden">
+                                    <p className="whitespace-pre-wrap">{a.body}</p>
+
+                                    <div className="mt-4 pt-4 border-t-2 border-black/10 dark:border-white/10 flex gap-4 text-sm font-bold items-center">
+                                        {session?.user && (
+                                            <label htmlFor={`reply-${a.id}`} className="cursor-pointer hover:underline text-blue-500">Reply</label>
+                                        )}
+                                        {session?.user?.id === query.author_id && (
+                                            <form action={acceptAnswer}>
+                                                <input type="hidden" name="answer_id" value={a.id} />
+                                                <button type="submit" className="text-green-600 hover:underline cursor-pointer">
+                                                    {query.accepted_answer_id === a.id ? "Unaccept" : "Accept"}
+                                                </button>
+                                            </form>
+                                        )}
                                     </div>
-                                )}
+
+
+                                    {session?.user && (
+                                        <div className="mt-4 hidden has-[:checked]:block">
+                                            <input type="checkbox" id={`reply-${a.id}`} className="peer hidden" />
+                                            <form action={submitAnswer} className="mt-2 space-y-2">
+                                                <input type="hidden" name="parent_id" value={a.id} />
+                                                <textarea name="body" required rows={3} className="w-full p-2 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Write a reply..."></textarea>
+                                                <button type="submit" className="px-4 py-2 bg-blue-500 text-white font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] cursor-pointer hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all text-xs">
+                                                    Post Reply
+                                                </button>
+                                            </form>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                        {renderAnswers(a.id, depth + 1)}
+                        <div className="peer-checked:hidden">
+                            {renderAnswers(a.id, depth + 1)}
+                        </div>
                     </div>
                 ))}
             </div>
@@ -174,8 +227,9 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                 </div>
                 <div className="flex-1 peer-checked:opacity-100">
                     <h1 className="text-3xl font-black mb-4">{query.title}</h1>
-                    <div className="text-sm font-bold text-muted-foreground mb-6 pb-4 border-b-2 border-black/10 dark:border-white/10">
-                        Asked by {query.displayUsername || query.username || query.name} on {query.created_at ? new Date(query.created_at).toLocaleDateString() : ''} • {query.views} views
+                    <div className="text-sm font-bold text-muted-foreground mb-6 pb-4 border-b-2 border-black/10 dark:border-white/10 flex justify-between">
+                        <span>Asked by {query.displayUsername || query.username || query.name} on {query.created_at ? new Date(query.created_at).toLocaleDateString() : ''} • {query.views} views</span>
+                        <Link href={`/q/${quarry.name}/query/${query.id}/report`} className="text-red-500 hover:underline">Report</Link>
                     </div>
                     <div className="text-lg whitespace-pre-wrap">{query.body}</div>
                 </div>

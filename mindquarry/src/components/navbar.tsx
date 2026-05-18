@@ -68,17 +68,20 @@ export default function Navbar() {
             <div><a href="/">MindQuarry</a></div>
 
             <div className="flex-grow px-16">
-                <div className="relative flex items-center">
+                <form action="/search" method="GET" className="relative flex items-center">
                     <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
                     <div className="absolute left-8 top-2.5 h-5 w-px bg-muted-foreground opacity-50" />
                     <Input
                         type="search"
+                        name="q"
                         placeholder="Search..."
-                        className="pl-10 pr-10"
+                        className="pl-10 pr-10 border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]"
                     />
                     <div className="absolute right-8 top-2.5 h-5 w-px bg-muted-foreground opacity-50" />
-                    <CornerDownLeft className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-                </div>
+                    <button type="submit" className="cursor-pointer">
+                        <CornerDownLeft className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                    </button>
+                </form>
             </div>
 
             <div className="ml-auto pr-4">

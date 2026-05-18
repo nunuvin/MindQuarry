@@ -45,8 +45,9 @@ export default async function QuarrySettingsPage({ params }: { params: Promise<{
         if (!membership || membership.role !== 'admin') return;
 
         const description = formData.get("description") as string;
+        const is_invite_only = formData.get("is_invite_only") === "on";
 
-        await db.updateTable("quarries").set({ description }).where("id", "=", quarry!.id).execute();
+        await db.updateTable("quarries").set({ description, is_invite_only }).where("id", "=", quarry!.id).execute();
         revalidatePath(`/q/${quarry!.name}`);
         revalidatePath(`/q/${quarry!.name}/settings`);
     }
@@ -62,6 +63,11 @@ export default async function QuarrySettingsPage({ params }: { params: Promise<{
                     <div>
                         <label className="block font-bold mb-2">Description</label>
                         <textarea name="description" rows={4} defaultValue={quarry.description || ""} className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <input type="checkbox" id="is_invite_only" name="is_invite_only" defaultChecked={quarry.is_invite_only || false} className="w-5 h-5 border-2 border-black dark:border-white accent-black dark:accent-white" />
+                        <label htmlFor="is_invite_only" className="font-bold cursor-pointer">Invite-Only Mode (Private)</label>
                     </div>
 
                     <button type="submit" className="w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer">

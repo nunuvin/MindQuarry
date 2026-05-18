@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -12,6 +12,19 @@ export default async function QuarryPage({ params }: { params: Promise<{ name: s
 
     const quarry = await db.selectFrom("quarries").selectAll().where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
+
+    if (quarry.is_invite_only) {
+        if (!session?.user) redirect("/login");
+        const membership = await db.selectFrom("quarry_members").where("quarry_id", "=", quarry.id).where("user_id", "=", session!.user.id).executeTakeFirst();
+        if (!membership) {
+            return (
+                <div className="max-w-4xl mx-auto mt-12 p-12 text-center border-2 border-black dark:border-white">
+                    <h1 className="text-2xl font-black uppercase mb-4 text-red-500">Private Community</h1>
+                    <p>This Quarry is invite-only. You must be added by an admin to view its contents or participate.</p>
+                </div>
+            );
+        }
+    }
 
     const queries = await db.selectFrom("queries")
         .leftJoin("user", "user.id", "queries.user_id")

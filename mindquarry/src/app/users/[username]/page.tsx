@@ -22,35 +22,121 @@ export default async function UserProfilePage({ params }: { params: Promise<{ us
 
     if (!user) return notFound();
 
-    // Dummy stats
-    const postCount = 12;
-    const upvotes = 42;
+    const profile = await db.selectFrom("profiles").selectAll().where("user_id", "=", user.id).executeTakeFirst();
+
+    // Compute dynamic stats
+    const queryCount = await db.selectFrom("queries").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).executeTakeFirst();
+    const answerCount = await db.selectFrom("answers").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).executeTakeFirst();
+    const acceptedCount = await db.selectFrom("queries").select((eb) => eb.fn.count("id").as("count")).innerJoin("answers", "answers.id", "queries.accepted_answer_id").where("answers.user_id", "=", user.id).executeTakeFirst();
+
+    const queryScore = await db.selectFrom("queries").select((eb) => eb.fn.sum("score").as("sum")).where("user_id", "=", user.id).executeTakeFirst();
+    const answerScore = await db.selectFrom("answers").select((eb) => eb.fn.sum("score").as("sum")).where("user_id", "=", user.id).executeTakeFirst();
+    const reputation = (Number(queryScore?.sum || 0) + Number(answerScore?.sum || 0));
+
+    const bans = await db.selectFrom("bans_and_timeouts").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).where("status", "=", "active").executeTakeFirst();
+
+    const isMe = session.user.id === user.id;
+
+    const followerCount = await db.selectFrom("follows").select((eb) => eb.fn.count("follower_id").as("count")).where("following_id", "=", user.id).executeTakeFirst();
+    const followingCount = await db.selectFrom("follows").select((eb) => eb.fn.count("following_id").as("count")).where("follower_id", "=", user.id).executeTakeFirst();
+
+    const followStatus = isMe ? null : await db.selectFrom("follows").selectAll().where("follower_id", "=", session.user.id).where("following_id", "=", user.id).executeTakeFirst();
+
+    async function toggleFollow() {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user || !user) return;
+
+        const current = await db.selectFrom("follows").selectAll().where("follower_id", "=", session.user.id).where("following_id", "=", user.id).executeTakeFirst();
+        if (current) {
+            await db.deleteFrom("follows").where("follower_id", "=", session.user.id).where("following_id", "=", user.id).execute();
+            // Demutualize inverse if it existed
+            await db.updateTable("follows").set({ is_mutual: false }).where("follower_id", "=", user.id).where("following_id", "=", session.user.id).execute();
+        } else {
+            const inverse = await db.selectFrom("follows").selectAll().where("follower_id", "=", user.id).where("following_id", "=", session.user.id).executeTakeFirst();
+            const isMutual = !!inverse;
+            await db.insertInto("follows").values({ follower_id: session.user.id, following_id: user.id, is_mutual: isMutual }).execute();
+            if (isMutual) {
+                await db.updateTable("follows").set({ is_mutual: true }).where("follower_id", "=", user.id).where("following_id", "=", session.user.id).execute();
+            } else {
+                await db.insertInto("notifications").values({
+                    id: crypto.randomUUID(),
+                    user_id: user.id,
+                    type: "follow_request",
+                    source_id: session.user.id,
+                }).execute();
+            }
+        }
+    }
 
     return (
-        <div className="max-w-xl mx-auto mt-12 p-6 bg-card rounded-lg shadow flex flex-col gap-6 border">
-            <div className="flex items-center gap-6">
-                <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center border overflow-hidden">
-                    {user.image ? (
-                        <Image src={user.image} alt="avatar" width={80} height={80} className="object-cover h-20 w-20" />
-                    ) : (
-                        <span className="text-4xl text-muted-foreground">👤</span>
-                    )}
+        <div className="max-w-2xl mx-auto mt-12 p-8 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff] flex flex-col gap-6">
+            <div className="flex items-start justify-between">
+                <div className="flex items-center gap-6">
+                    <div className="h-24 w-24 rounded-none bg-muted flex items-center justify-center border-[3px] border-black dark:border-white overflow-hidden shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
+                        {user.image ? (
+                            <Image src={user.image} alt="avatar" width={96} height={96} className="object-cover h-24 w-24" />
+                        ) : (
+                            <span className="text-4xl text-muted-foreground">👤</span>
+                        )}
+                    </div>
+                    <div>
+                        <div className="text-3xl font-black uppercase tracking-tight">{user.displayUsername || user.username || user.name}</div>
+                        <div className="text-muted-foreground text-sm mt-1 font-bold">Joined {new Date(user.createdAt).toLocaleDateString()}</div>
+                    </div>
                 </div>
-                <div>
-                    <div className="text-2xl font-bold">{user.displayUsername || user.username || user.name}</div>
-                    <div className="text-muted-foreground text-sm mt-1">Joined {new Date(user.createdAt).toLocaleDateString()}</div>
+
+                {!isMe && (
+                    <form action={toggleFollow}>
+                        <button type="submit" className={`px-6 py-2 font-black uppercase border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer transition-colors ${followStatus ? 'bg-muted text-foreground' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>
+                            {followStatus ? (followStatus.is_mutual ? "Mutual Follow" : "Unfollow") : "Follow"}
+                        </button>
+                    </form>
+                )}
+
+                {isMe && (
+                    <a href="/settings" className="px-6 py-2 font-black uppercase border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors text-sm">
+                        Edit Profile
+                    </a>
+                )}
+            </div>
+
+            {profile?.bio && (
+                <div className="p-4 bg-muted/30 border-l-4 border-black dark:border-white whitespace-pre-wrap font-medium">
+                    {profile.bio}
+                </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 p-4 border-2 border-black dark:border-white">
+                <div className="flex flex-col items-center">
+                    <span className="text-2xl font-black">{reputation}</span>
+                    <span className="text-muted-foreground text-xs uppercase font-bold text-center">Reputation</span>
+                </div>
+                <div className="flex flex-col items-center">
+                    <span className="text-2xl font-black">{Number(queryCount?.count || 0)}</span>
+                    <span className="text-muted-foreground text-xs uppercase font-bold text-center">Questions</span>
+                </div>
+                <div className="flex flex-col items-center">
+                    <span className="text-2xl font-black">{Number(answerCount?.count || 0)}</span>
+                    <span className="text-muted-foreground text-xs uppercase font-bold text-center">Answers</span>
+                </div>
+                <div className="flex flex-col items-center">
+                    <span className="text-2xl font-black text-green-500">{Number(acceptedCount?.count || 0)}</span>
+                    <span className="text-green-500 text-xs uppercase font-bold text-center">Accepted</span>
                 </div>
             </div>
-            <div className="flex gap-8 mt-4">
-                <div className="flex flex-col items-center">
-                    <span className="text-lg font-semibold">{postCount}</span>
-                    <span className="text-muted-foreground text-xs">Posts</span>
-                </div>
-                <div className="flex flex-col items-center">
-                    <span className="text-lg font-semibold">{upvotes}</span>
-                    <span className="text-muted-foreground text-xs">Upvotes</span>
-                </div>
+
+            <div className="flex gap-8 text-sm font-bold border-b-2 border-black/10 dark:border-white/10 pb-4">
+                <div><span className="text-lg">{Number(followerCount?.count || 0)}</span> Followers</div>
+                <div><span className="text-lg">{Number(followingCount?.count || 0)}</span> Following</div>
+                {Number(bans?.count || 0) > 0 && (
+                    <div className="text-red-500 ml-auto"><span className="text-lg">{Number(bans?.count || 0)}</span> Active Bans</div>
+                )}
             </div>
+
+            {/* Extended history (e.g. recent questions/answers) would go here */}
+
         </div>
     );
 }
