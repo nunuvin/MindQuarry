@@ -5,6 +5,10 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import { CopyLinkButton } from "./CopyLinkButton";
+import { TipTapEditor } from "@/components/TipTapEditor";
+import { TipTapRenderer } from "@/components/TipTapRenderer";
+import { isRateLimited } from "@/lib/rateLimit";
 
 export default async function QueryDiscussionPage({ params }: { params: Promise<{ name: string, id: string }> }) {
     const rawHeaders = await headers();
@@ -60,6 +64,12 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return redirect("/login");
+
+        // Rate limit: Max 10 replies per minute
+        if (isRateLimited(session.user.id, "submit_answer", 10, 60000)) {
+            console.warn(`User ${session.user.id} rate limited on answer submission.`);
+            return;
+        }
 
         const body = formData.get("body") as string;
         const parentId = formData.get("parent_id") as string | null;
@@ -143,18 +153,23 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                     <div className="text-green-500 font-bold border-2 border-green-500 px-1 py-0.5 text-xs">✓</div>
                                 )}
                             </div>
-                            <div className="flex-1">
-                                <div className="text-xs font-bold text-muted-foreground mb-2 flex justify-between">
+                            <div className="flex-1" id={`reply-${a.id}`}>
+                                <div className="text-xs font-bold text-muted-foreground mb-2 flex justify-between items-center">
                                     <span>{a.displayUsername || a.username || a.name} • {a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}</span>
-                                    <label htmlFor={`collapse-${a.id}`} className="cursor-pointer px-2 border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black">
-                                        +/-
-                                    </label>
+                                    <div className="flex gap-2">
+                                        <CopyLinkButton answerId={a.id} />
+                                        <label htmlFor={`collapse-${a.id}`} className="cursor-pointer px-2 border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black">
+                                            +/-
+                                        </label>
+                                    </div>
                                 </div>
 
                                 <input type="checkbox" id={`collapse-${a.id}`} className="peer hidden" />
 
                                 <div className="peer-checked:hidden">
-                                    <p className="whitespace-pre-wrap">{a.body}</p>
+                                    <div className="text-sm">
+                                        <TipTapRenderer content={a.body || ""} />
+                                    </div>
 
                                     <div className="mt-4 pt-4 border-t-2 border-black/10 dark:border-white/10 flex gap-4 text-sm font-bold items-center">
                                         {session?.user && (
@@ -176,7 +191,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                             <input type="checkbox" id={`reply-${a.id}`} className="peer hidden" />
                                             <form action={submitAnswer} className="mt-2 space-y-2">
                                                 <input type="hidden" name="parent_id" value={a.id} />
-                                                <textarea name="body" required rows={3} className="w-full p-2 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Write a reply..."></textarea>
+                                                <TipTapEditor name="body" />
                                                 <button type="submit" className="px-4 py-2 bg-blue-500 text-white font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] cursor-pointer hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all text-xs">
                                                     Post Reply
                                                 </button>
@@ -231,7 +246,9 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                         <span>Asked by {query.displayUsername || query.username || query.name} on {query.created_at ? new Date(query.created_at).toLocaleDateString() : ''} • {query.views} views</span>
                         <Link href={`/q/${quarry.name}/query/${query.id}/report`} className="text-red-500 hover:underline">Report</Link>
                     </div>
-                    <div className="text-lg whitespace-pre-wrap">{query.body}</div>
+                    <div className="text-lg">
+                        <TipTapRenderer content={query.body || ""} />
+                    </div>
                 </div>
             </div>
 
@@ -241,7 +258,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                 <div className="mb-12 p-6 bg-muted/30 border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
                     <h3 className="font-black uppercase mb-4">Your Answer</h3>
                     <form action={submitAnswer} className="space-y-4">
-                        <textarea name="body" required rows={5} className="w-full p-4 border-2 border-black dark:border-white bg-card outline-none focus:ring-2 focus:ring-blue-500 font-medium" placeholder="Write your answer here..."></textarea>
+                        <TipTapEditor name="body" />
                         <button type="submit" className="px-8 py-3 bg-blue-500 text-white font-black uppercase border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer hover:bg-blue-600 transition-colors">
                             Post Answer
                         </button>

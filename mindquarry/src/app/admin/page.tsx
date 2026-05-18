@@ -63,6 +63,19 @@ export default async function AdminDashboardPage() {
         revalidatePath("/admin");
     }
 
+    async function updateBanTemplate(formData: FormData) {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) return;
+        const isAdminUser = await isGlobalAdmin(session.user.id);
+        if (!isAdminUser) return;
+
+        const template = formData.get("template") as string;
+        await db.updateTable("site_settings").set({ global_ban_template: template }).where("id", "=", 1).execute();
+        revalidatePath("/admin");
+    }
+
     return (
         <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border-[3px] border-black rounded-none shadow-[8px_8px_0_0_#000] dark:border-white dark:shadow-[8px_8px_0_0_#fff]">
             <h1 className="text-3xl font-black uppercase mb-8 border-b-[3px] border-black dark:border-white pb-2">Global Admin Panel</h1>
@@ -94,6 +107,22 @@ export default async function AdminDashboardPage() {
                             </form>
                         </div>
                     </div>
+                </section>
+
+                <section>
+                    <h2 className="text-xl font-bold mb-4">Global Ban Template</h2>
+                    <form action={updateBanTemplate} className="space-y-4">
+                        <textarea
+                            name="template"
+                            rows={4}
+                            defaultValue={settings?.global_ban_template || ""}
+                            placeholder="Default message sent to users upon global ban..."
+                            className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                        />
+                        <button type="submit" className="px-6 py-2 font-bold border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black cursor-pointer hover:bg-muted-foreground/20 hover:text-black dark:hover:text-white transition-colors">
+                            Save Template
+                        </button>
+                    </form>
                 </section>
             </div>
         </div>

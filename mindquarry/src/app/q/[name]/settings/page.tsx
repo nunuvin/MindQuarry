@@ -46,8 +46,9 @@ export default async function QuarrySettingsPage({ params }: { params: Promise<{
 
         const description = formData.get("description") as string;
         const is_invite_only = formData.get("is_invite_only") === "on";
+        const custom_ban_template = formData.get("custom_ban_template") as string;
 
-        await db.updateTable("quarries").set({ description, is_invite_only }).where("id", "=", quarry!.id).execute();
+        await db.updateTable("quarries").set({ description, is_invite_only, custom_ban_template: custom_ban_template || null }).where("id", "=", quarry!.id).execute();
         revalidatePath(`/q/${quarry!.name}`);
         revalidatePath(`/q/${quarry!.name}/settings`);
     }
@@ -68,6 +69,12 @@ export default async function QuarrySettingsPage({ params }: { params: Promise<{
                     <div className="flex items-center gap-3">
                         <input type="checkbox" id="is_invite_only" name="is_invite_only" defaultChecked={quarry.is_invite_only || false} className="w-5 h-5 border-2 border-black dark:border-white accent-black dark:accent-white" />
                         <label htmlFor="is_invite_only" className="font-bold cursor-pointer">Invite-Only Mode (Private)</label>
+                    </div>
+
+                    <div className="pt-6 border-t-2 border-black/10 dark:border-white/10">
+                        <label className="block font-bold mb-2">Custom Ban Template</label>
+                        <p className="text-xs text-muted-foreground mb-2">Overrides the global template when banning users from this specific Quarry.</p>
+                        <textarea name="custom_ban_template" rows={3} defaultValue={quarry.custom_ban_template || ""} placeholder="Leave blank to use global defaults." className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500"></textarea>
                     </div>
 
                     <button type="submit" className="w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer">

@@ -1,0 +1,9 @@
+--- mindquarry/src/app/q/[name]/mod/queue/page.tsx
++++ mindquarry/src/app/q/[name]/mod/queue/page.tsx
+@@ -176,7 +176,5 @@
+                 </div>
+             </div>
+         </div>
+     );
+ }
+-}

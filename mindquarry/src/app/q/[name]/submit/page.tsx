@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { generateUUID } from "@/lib/utils";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { TipTapEditor } from "@/components/TipTapEditor";
+import { isRateLimited } from "@/lib/rateLimit";
 
 export default async function SubmitQueryPage({ params }: { params: Promise<{ name: string }> }) {
     const rawHeaders = await headers();
@@ -19,6 +21,12 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+
+        // Rate limit: Max 5 queries per minute
+        if (isRateLimited(session.user.id, "submit_query", 5, 60000)) {
+            console.warn(`User ${session.user.id} rate limited on query submission.`);
+            return;
+        }
 
         const title = formData.get("title") as string;
         const body = formData.get("body") as string;
@@ -57,7 +65,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
                 </div>
                 <div>
                     <label className="block font-bold mb-2">Body</label>
-                    <textarea name="body" required rows={8} className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500" placeholder="Provide details..."></textarea>
+                    <TipTapEditor name="body" />
                 </div>
                 <button type="submit" className="cursor-pointer w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
                     Post Query

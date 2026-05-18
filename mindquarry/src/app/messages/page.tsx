@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { generateUUID } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
+import { isRateLimited } from "@/lib/rateLimit";
 
 export default async function MessagesPage() {
     const rawHeaders = await headers();
@@ -60,6 +61,9 @@ export default async function MessagesPage() {
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+
+        // Rate limit new chats: Max 3 new chats per minute
+        if (isRateLimited(session.user.id, "new_chat", 3, 60000)) return;
 
         const targetUsername = formData.get("username") as string;
         if (!targetUsername) return;

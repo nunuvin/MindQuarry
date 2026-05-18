@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { generateUUID } from "@/lib/utils";
 
 export default async function UserProfilePage({ params }: { params: Promise<{ username: string }> }) {
     const rawHeaders = await headers();
@@ -61,7 +62,7 @@ export default async function UserProfilePage({ params }: { params: Promise<{ us
                 await db.updateTable("follows").set({ is_mutual: true }).where("follower_id", "=", user.id).where("following_id", "=", session.user.id).execute();
             } else {
                 await db.insertInto("notifications").values({
-                    id: crypto.randomUUID(),
+                    id: generateUUID(),
                     user_id: user.id,
                     type: "follow_request",
                     source_id: session.user.id,

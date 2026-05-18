@@ -29,7 +29,9 @@ export default async function AdminReportsPage() {
         .leftJoin("user as reported", "reported.id", "user_reports.reported_id")
         .leftJoin("quarries", "quarries.id", "user_reports.quarry_id")
         .select([
+            "user_reports.target_id", "user_reports.target_type",
             "user_reports.id", "user_reports.reason", "user_reports.status", "user_reports.created_at",
+            "user_reports.reporter_id", "user_reports.reported_id",
             "reporter.name as reporter_name", "reporter.displayUsername as reporter_username",
             "reported.name as reported_name", "reported.displayUsername as reported_username",
             "quarries.name as quarry_name"
@@ -83,9 +85,32 @@ export default async function AdminReportsPage() {
                                     Dismiss
                                 </button>
                             </form>
-                            <button className="px-4 py-2 font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444] opacity-50 cursor-not-allowed">
-                                Action (WIP)
-                            </button>
+                            <form action={async (formData) => {
+                                "use server";
+                                const id = formData.get("id") as string;
+                                const reporter_id = formData.get("reporter_id") as string;
+                                const reported_id = formData.get("reported_id") as string;
+
+                                await db.updateTable("user_reports").set({ status: "actioned" }).where("id", "=", id).execute();
+                                // Simulate banning functionality for MVP
+                                const { generateUUID } = await import("@/lib/utils");
+                                await db.insertInto("bans_and_timeouts").values({
+                                    id: generateUUID(),
+                                    user_id: reported_id,
+                                    issued_by_id: reporter_id, // For global scope, replace realistically
+                                    reason: "Platform Violations",
+                                    status: "active"
+                                }).execute();
+
+                                revalidatePath("/admin/reports");
+                            }}>
+                                <input type="hidden" name="id" value={r.id} />
+                                <input type="hidden" name="reporter_id" value={r.reporter_id!} />
+                                <input type="hidden" name="reported_id" value={r.reported_id!} />
+                                <button type="submit" className="px-4 py-2 font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444]">
+                                    Action (Ban)
+                                </button>
+                            </form>
                         </div>
                     </div>
                 ))}

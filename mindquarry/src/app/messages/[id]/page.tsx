@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { generateUUID } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
+import { isRateLimited } from "@/lib/rateLimit";
 
 export default async function ChatPage({ params }: { params: Promise<{ id: string }> }) {
     const rawHeaders = await headers();
@@ -63,6 +64,9 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
             .executeTakeFirst();
 
         if (!participant) return;
+
+        // Rate limit: 20 messages per minute
+        if (isRateLimited(session.user.id, "send_message", 20, 60000)) return;
 
         const body = formData.get("body") as string;
         if (!body) return;

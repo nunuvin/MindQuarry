@@ -1,0 +1,10 @@
+--- mindquarry/src/app/admin/reports/page.tsx
++++ mindquarry/src/app/admin/reports/page.tsx
+@@ -29,6 +29,7 @@
+         .leftJoin("user as reported", "reported.id", "user_reports.reported_id")
+         .leftJoin("quarries", "quarries.id", "user_reports.quarry_id")
+         .select([
++            "user_reports.target_id", "user_reports.target_type",
+             "user_reports.id", "user_reports.reason", "user_reports.status", "user_reports.created_at",
+             "reporter.name as reporter_name", "reporter.displayUsername as reporter_username",
+             "reported.name as reported_name", "reported.displayUsername as reported_username",

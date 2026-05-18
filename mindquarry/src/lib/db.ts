@@ -264,6 +264,12 @@ const dialect = new PostgresDialect({
     }),
 });
 
+/**
+ * Global Kysely database client.
+ * Note: Since we use cross-schema setups (mq_auth & mq_public),
+ * we avoid using .withSchema() which would strictly prefix ALL queries.
+ * Instead, schema resolution relies on PostgreSQL's search_path or explicit SQL joins.
+ */
 export const db = new Kysely<Database>({
     dialect,
-}).withSchema("mq_public");
+});

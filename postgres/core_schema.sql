@@ -195,3 +195,22 @@ GRANT USAGE ON SCHEMA mq_public TO mqauth_user;
 GRANT CREATE ON SCHEMA mq_public TO mqauth_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA mq_public TO mqauth_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA mq_public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mqauth_user;
+-- Missing column from previous implementation if not present
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='mq_public' AND table_name='site_settings' AND column_name='global_ban_template') THEN
+        ALTER TABLE mq_public.site_settings ADD COLUMN global_ban_template TEXT DEFAULT 'Your account has been suspended for violating platform rules.';
+    END IF;
+END $$;
+
+-- Performance optimization indexes for MindQuarry Core
+CREATE INDEX IF NOT EXISTS idx_queries_quarry_id ON mq_public.queries(quarry_id);
+CREATE INDEX IF NOT EXISTS idx_queries_user_id ON mq_public.queries(user_id);
+CREATE INDEX IF NOT EXISTS idx_queries_created_at ON mq_public.queries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_answers_query_id ON mq_public.answers(query_id);
+CREATE INDEX IF NOT EXISTS idx_answers_parent_id ON mq_public.answers(parent_answer_id);
+CREATE INDEX IF NOT EXISTS idx_user_reports_quarry_id ON mq_public.user_reports(quarry_id, status);
+
+COMMENT ON TABLE mq_public.profiles IS 'Extended user profiles bridging to Better Auth identities';
+COMMENT ON TABLE mq_public.queries IS 'Top-level questions/posts submitted by users to Quarries';
+COMMENT ON TABLE mq_public.answers IS 'Replies to queries or nested answers (Reddit-style)';

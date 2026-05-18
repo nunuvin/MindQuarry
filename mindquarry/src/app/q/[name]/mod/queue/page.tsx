@@ -39,6 +39,18 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         .orderBy("created_at", "desc")
         .execute();
 
+    // Group repeat reports
+    const reportGroups = new Map<string, typeof reports>();
+    reports.forEach(r => {
+        const key = `${r.target_type}-${r.target_id}`;
+        if (!reportGroups.has(key)) {
+            reportGroups.set(key, []);
+        }
+        reportGroups.get(key)!.push(r);
+    });
+
+    const uniqueReports = Array.from(reportGroups.values());
+
     async function dismissReport(formData: FormData) {
         "use server";
         const rawHeaders = await headers();
@@ -70,7 +82,22 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
             await db.updateTable("answers").set({ is_hidden: true, hidden_at: new Date() }).where("id", "=", targetId).execute();
         }
 
-        await db.updateTable("user_reports").set({ status: "actioned" }).where("id", "=", id).execute();
+        await db.updateTable("user_reports").set({ status: "actioned" }).where("target_id", "=", targetId).where("target_type", "=", targetType).execute();
+        revalidatePath(`/q/${quarry!.name}/mod/queue`);
+    }
+
+    async function escalateReport(formData: FormData) {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) return;
+        const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
+        if (!membership || membership.role !== 'admin') return;
+
+        const targetId = formData.get("target_id") as string;
+        const targetType = formData.get("target_type") as string;
+
+        await db.updateTable("user_reports").set({ status: "escalated", quarry_id: null }).where("target_id", "=", targetId).where("target_type", "=", targetType).execute();
         revalidatePath(`/q/${quarry!.name}/mod/queue`);
     }
 
@@ -85,48 +112,64 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                 </div>
 
                 <div className="space-y-8">
-                    {reports.map(r => (
-                        <div key={r.id} className="grid grid-cols-1 md:grid-cols-3 gap-6 border-[3px] border-black dark:border-white p-4 shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
-                            <div className="md:col-span-2">
-                                <h3 className="font-black uppercase text-lg mb-2">Reported Content ({r.target_type})</h3>
-                                <div className="p-4 bg-muted/30 border-l-4 border-red-500 whitespace-pre-wrap font-medium text-sm mb-4">
-                                    {r.reason}
+                    {uniqueReports.map(group => {
+                        const r = group[0];
+                        const repeatCount = group.length;
+
+                        return (
+                            <div key={r.id} className="grid grid-cols-1 md:grid-cols-3 gap-6 border-[3px] border-black dark:border-white p-4 shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] relative">
+                                {repeatCount > 1 && (
+                                    <div className="absolute -top-3 -right-3 bg-red-500 text-white font-black px-3 py-1 border-[3px] border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]">
+                                        {repeatCount} REPORTS
+                                    </div>
+                                )}
+                                <div className="md:col-span-2">
+                                    <h3 className="font-black uppercase text-lg mb-2">Reported Content ({r.target_type})</h3>
+                                    <div className="p-4 bg-muted/30 border-l-4 border-red-500 whitespace-pre-wrap font-medium text-sm mb-4 flex flex-col gap-4">
+                                        {group.map(report => (
+                                            <div key={report.id} className="border-b-2 border-black/10 dark:border-white/10 pb-4 last:border-0 last:pb-0">
+                                                <span className="font-bold text-xs uppercase text-muted-foreground block mb-1">Reason from {report.reporter_username || report.reporter_name}</span>
+                                                {report.reason}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-4 flex-wrap">
+                                        <form action={dismissReport}>
+                                            <input type="hidden" name="id" value={r.id} />
+                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-black dark:border-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black cursor-pointer shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]">
+                                                Dismiss All
+                                            </button>
+                                        </form>
+                                        <form action={hideItem}>
+                                            <input type="hidden" name="id" value={r.id} />
+                                            <input type="hidden" name="target_id" value={r.target_id || ''} />
+                                            <input type="hidden" name="target_type" value={r.target_type || ''} />
+                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444]">
+                                                Hide Content
+                                            </button>
+                                        </form>
+                                        <form action={escalateReport}>
+                                            <input type="hidden" name="target_id" value={r.target_id || ''} />
+                                            <input type="hidden" name="target_type" value={r.target_type || ''} />
+                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#f97316]">
+                                                Escalate to Global
+                                            </button>
+                                        </form>
+                                    </div>
                                 </div>
-                                <div className="flex gap-4">
-                                    <form action={dismissReport}>
-                                        <input type="hidden" name="id" value={r.id} />
-                                        <button type="submit" className="px-4 py-2 font-bold border-2 border-black dark:border-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black cursor-pointer shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]">
-                                            Dismiss
-                                        </button>
-                                    </form>
-                                    <form action={hideItem}>
-                                        <input type="hidden" name="id" value={r.id} />
-                                        <input type="hidden" name="target_id" value={r.target_id || ''} />
-                                        <input type="hidden" name="target_type" value={r.target_type || ''} />
-                                        <button type="submit" className="px-4 py-2 font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444]">
-                                            Hide Content
-                                        </button>
-                                    </form>
+
+                                <div className="border-l-2 border-black/20 dark:border-white/20 pl-6 flex flex-col justify-start">
+                                    <div className="mb-4">
+                                        <h4 className="font-bold text-xs uppercase text-muted-foreground mb-1">Reported User</h4>
+                                        <div className="font-bold text-lg">{r.reported_username || r.reported_name}</div>
+                                        <a href={`/users/${r.reported_username}`} target="_blank" className="text-xs text-blue-500 hover:underline">View Profile &rarr;</a>
+                                    </div>
                                 </div>
                             </div>
+                        );
+                    })}
 
-                            <div className="border-l-2 border-black/20 dark:border-white/20 pl-6 flex flex-col justify-between">
-                                <div className="mb-4">
-                                    <h4 className="font-bold text-xs uppercase text-muted-foreground mb-1">Reported User</h4>
-                                    <div className="font-bold text-lg">{r.reported_username || r.reported_name}</div>
-                                    <a href={`/users/${r.reported_username}`} target="_blank" className="text-xs text-blue-500 hover:underline">View Profile &rarr;</a>
-                                </div>
-
-                                <div className="pt-4 border-t-2 border-black/20 dark:border-white/20">
-                                    <h4 className="font-bold text-xs uppercase text-muted-foreground mb-1">Reported By</h4>
-                                    <div className="font-bold">{r.reporter_username || r.reporter_name}</div>
-                                    <a href={`/users/${r.reporter_username}`} target="_blank" className="text-xs text-blue-500 hover:underline">View Profile &rarr;</a>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-
-                    {reports.length === 0 && (
+                    {uniqueReports.length === 0 && (
                         <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
                             The moderation queue is empty.
                         </div>
