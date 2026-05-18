@@ -8,16 +8,59 @@ import { useEffect, useState } from "react";
 export default function Navbar() {
     const [user, setUser] = useState<any>(null);
     useEffect(() => {
-        let unsub: any;
-        (async () => {
-            unsub = authClient.session.subscribe((session) => {
-                setUser(session?.user || null);
-            });
-            // Fetch session on mount
-            const session = await authClient.session.get();
-            setUser(session?.user || null);
-        })();
-        return () => { if (unsub) unsub(); };
+        let unsubSignal: any;
+        let mounted = true;
+        const isDev = process.env.NODE_ENV !== "production";
+
+        const fetchSession = async () => {
+            try {
+                const result = await (authClient as any)["get-session"]();
+                const resolvedUser = result?.data?.user ?? result?.user ?? null;
+
+                if (isDev) {
+                    console.debug("[auth] navbar get-session", {
+                        hasData: Boolean(result?.data),
+                        hasUser: Boolean(resolvedUser),
+                        username: resolvedUser?.username ?? resolvedUser?.displayUsername ?? null,
+                    });
+                }
+
+                if (mounted) setUser(resolvedUser);
+            } catch (e) {
+                if (isDev) {
+                    console.debug("[auth] navbar get-session failed", e);
+                }
+                if (mounted) setUser(null);
+            }
+        };
+
+        // Initial fetch
+        fetchSession();
+
+        // If the client exposes the $sessionSignal atom, subscribe to it so UI updates after sign-in/out
+        try {
+            const atoms = (authClient as any).$store?.atoms;
+            const signal = atoms?.$sessionSignal;
+            if (signal && typeof signal.subscribe === "function") {
+                unsubSignal = signal.subscribe(() => {
+                    if (isDev) {
+                        console.debug("[auth] session signal toggled");
+                    }
+                    fetchSession();
+                });
+            } else if (isDev) {
+                console.debug("[auth] no session signal available on auth client");
+            }
+        } catch (e) {
+            if (isDev) {
+                console.debug("[auth] session signal subscribe failed", e);
+            }
+        }
+
+        return () => {
+            mounted = false;
+            if (typeof unsubSignal === "function") unsubSignal();
+        };
     }, []);
 
     return (

@@ -7,22 +7,21 @@ import { Eye, EyeOff } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 export default function LoginPage() {
-    const [email, setEmail] = useState("");
+    const [identifier, setIdentifier] = useState(""); // username or email
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const [username, setUsername] = useState("");
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
         try {
-            // Try username login first if username is filled
+            // Decide whether identifier is an email or username
             let session;
-            if (username) {
-                session = await authClient.signIn.username({ username, password });
+            if (identifier.includes("@")) {
+                session = await authClient.signIn.email({ email: identifier, password });
             } else {
-                session = await authClient.signIn.email({ email, password });
+                session = await authClient.signIn.username({ username: identifier, password });
             }
             if (session.error) throw new Error(session.error.message || "Login failed");
             window.location.href = "/";
@@ -39,25 +38,14 @@ export default function LoginPage() {
             >
                 <h1 className="text-2xl font-bold text-center mb-2">Sign in to your account</h1>
                 <div className="flex flex-col gap-2">
-                    <label htmlFor="username" className="text-sm font-medium">Username or Email</label>
+                    <label htmlFor="identifier" className="text-sm font-medium">Username or Email</label>
                     <Input
-                        id="username"
+                        id="identifier"
                         type="text"
                         autoComplete="username"
-                        value={username}
-                        onChange={e => setUsername(e.target.value)}
-                        placeholder="your username (or leave blank to use email)"
-                    />
-                </div>
-                <div className="flex flex-col gap-2">
-                    <label htmlFor="email" className="text-sm font-medium">Email</label>
-                    <Input
-                        id="email"
-                        type="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="you@example.com"
+                        value={identifier}
+                        onChange={e => setIdentifier(e.target.value)}
+                        placeholder="your username or email"
                     />
                 </div>
                 <div className="flex flex-col gap-2">
