@@ -5,22 +5,19 @@ import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
-export default async function UserProfilePage({ params }: { params: { username: string } }) {
-    // Get headers as a plain object for Better Auth
+export default async function UserProfilePage({ params }: { params: Promise<{ username: string }> }) {
     const rawHeaders = await headers();
-    const headerObj: Record<string, string> = {};
-    for (const [key, value] of rawHeaders.entries()) {
-        headerObj[key] = value;
-    }
-    const session = await auth.api.getSession({ headers: headerObj });
+    const session = await auth.api.getSession({ headers: rawHeaders });
     if (!session?.user) {
         redirect("/login");
     }
 
+    const resolvedParams = await params;
+
     // Fetch user by username from the database
     const user = await db.selectFrom("user")
         .select(["id", "name", "image", "createdAt", "displayUsername", "username"])
-        .where("username", "=", params.username)
+        .where("username", "=", resolvedParams.username)
         .executeTakeFirst();
 
     if (!user) return notFound();
@@ -57,5 +54,4 @@ export default async function UserProfilePage({ params }: { params: { username: 
         </div>
     );
 }
-
 

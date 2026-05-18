@@ -1,10 +1,11 @@
 // src/lib/authHelpers.ts
 
 import { auth } from "./auth";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 
 // Server-side session check
 export async function isLoggedIn(): Promise<boolean> {
-    const session = await auth.session.get({ cookies });
+    const rawHeaders = await headers();
+    const session = await auth.api.getSession({ headers: rawHeaders });
     return !!session?.user;
 }

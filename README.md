@@ -37,6 +37,45 @@ Still early or placeholder:
 - Sidebar destinations are placeholders.
 - Core Q&A features such as questions, answers, votes, tags, comments, moderation flows, and search indexing are not implemented yet.
 
+## Local Setup
+
+### New Installation
+
+1. Install dependencies in the Next app:
+   ```bash
+   cd mindquarry
+   npm install
+   ```
+
+2. Setup the database. See `postgres/README.md` for execution order.
+   ```bash
+   psql -U postgres -d your_db -f postgres/extensions.sql
+   psql -U postgres -d your_db -f postgres/mqauth_init.sql
+   psql -U postgres -d your_db -f postgres/core_schema.sql
+   ```
+
+3. Configure your `.env` file inside `mindquarry/` with your `DATABASE_URL`.
+
+4. Start the dev server:
+   ```bash
+   npm run dev
+   ```
+
+### Existing Installation Updates
+
+If you already have a running instance and we add new packages or schema changes, do the following:
+
+1. Update packages:
+   ```bash
+   cd mindquarry
+   npm install
+   ```
+
+2. Safely apply schema updates (uses `IF NOT EXISTS`):
+   ```bash
+   psql -U postgres -d your_db -f postgres/core_schema.sql
+   ```
+
 ## Where To Work
 
 - See `mindquarry/README.md` for app-specific setup.
