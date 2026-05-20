@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS mq_auth."user" (
 );
 
 -- Session table
-CREATE TABLE IF NOT EXISTS mq_auth."session" (
+CREATE UNLOGGED TABLE IF NOT EXISTS mq_auth."session" (
     "id" VARCHAR(255) PRIMARY KEY,
     "userId" VARCHAR(255) NOT NULL REFERENCES mq_auth."user"("id") ON DELETE CASCADE,
     "token" VARCHAR(255) NOT NULL,

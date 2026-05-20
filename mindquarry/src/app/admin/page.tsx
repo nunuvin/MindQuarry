@@ -21,8 +21,8 @@ export default async function AdminDashboardPage() {
     if (settings && !settings.first_admin_user_id) {
         const firstUser = await db.selectFrom("user").select("id").orderBy("createdAt", "asc").executeTakeFirst();
         if (firstUser) {
-             await db.updateTable("site_settings").set({ first_admin_user_id: firstUser.id }).where("id", "=", 1).execute();
-             settings.first_admin_user_id = firstUser.id;
+            await db.updateTable("site_settings").set({ first_admin_user_id: firstUser.id }).where("id", "=", 1).execute();
+            settings.first_admin_user_id = firstUser.id;
         }
     }
 

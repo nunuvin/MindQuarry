@@ -9,6 +9,7 @@ import { CopyLinkButton } from "./CopyLinkButton";
 import { TipTapEditor } from "@/components/TipTapEditor";
 import { TipTapRenderer } from "@/components/TipTapRenderer";
 import { isRateLimited } from "@/lib/rateLimit";
+import { sql } from "kysely";
 
 export default async function QueryDiscussionPage({ params }: { params: Promise<{ name: string, id: string }> }) {
     const rawHeaders = await headers();
@@ -34,9 +35,11 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
 
     const query = await db.selectFrom("queries")
         .leftJoin("user", "user.id", "queries.user_id")
-        .select([
-            "queries.id", "queries.title", "queries.body", "queries.score", "queries.views",
-            "queries.accepted_answer_id", "queries.created_at", "queries.user_id as author_id", "user.name", "user.displayUsername", "user.username"
+        .leftJoin("query_views", "query_views.query_id", "queries.id")
+        .select((eb) => [
+            "queries.id", "queries.title", "queries.body", "queries.score",
+            "queries.accepted_answer_id", "queries.created_at", "queries.user_id as author_id", "user.name", "user.displayUsername", "user.username",
+            eb.fn.coalesce("query_views.views", sql<number>`0`).as("views")
         ])
         .where("queries.id", "=", resolvedParams.id)
         .where("is_hidden", "=", false)
@@ -57,7 +60,10 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         .execute();
 
     // Fire and forget view increment
-    db.updateTable("queries").set((eb) => ({ views: eb('views', '+', 1) })).where("id", "=", query.id).execute().catch(()=>null);
+    db.insertInto("query_views")
+        .values({ query_id: query.id, views: 1 })
+        .onConflict((oc) => oc.column("query_id").doUpdateSet({ views: sql<number>`query_views.views + 1` }))
+        .execute().catch(() => null);
 
     async function submitAnswer(formData: FormData) {
         "use server";
@@ -121,19 +127,21 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         if (value !== 1 && value !== -1) return;
 
         try {
-            const existing = await db.selectFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-            if (existing && 'value' in existing) {
-                if (existing.value === value) {
-                    await db.deleteFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
-                    await db.updateTable("queries").set((eb) => ({ score: eb('score', '-', value) })).where("id", "=", query!.id).execute();
+            await db.transaction().execute(async (trx) => {
+                const existing = await trx.selectFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).executeTakeFirst();
+                if (existing && 'value' in existing) {
+                    if (existing.value === value) {
+                        await trx.deleteFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
+                        await trx.updateTable("queries").set((eb) => ({ score: eb('score', '-', value) })).where("id", "=", query!.id).execute();
+                    } else {
+                        await trx.updateTable("query_votes").set({ value }).where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
+                        await trx.updateTable("queries").set((eb) => ({ score: eb('score', '+', value * 2) })).where("id", "=", query!.id).execute();
+                    }
                 } else {
-                    await db.updateTable("query_votes").set({ value }).where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
-                    await db.updateTable("queries").set((eb) => ({ score: eb('score', '+', value * 2) })).where("id", "=", query!.id).execute();
+                    await trx.insertInto("query_votes").values({ query_id: query!.id, user_id: session.user.id, value }).execute();
+                    await trx.updateTable("queries").set((eb) => ({ score: eb('score', '+', value) })).where("id", "=", query!.id).execute();
                 }
-            } else {
-                await db.insertInto("query_votes").values({ query_id: query!.id, user_id: session.user.id, value }).execute();
-                await db.updateTable("queries").set((eb) => ({ score: eb('score', '+', value) })).where("id", "=", query!.id).execute();
-            }
+            });
             revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
         } catch(e) {}
     }

@@ -112,12 +112,12 @@ export default async function MessagesPage() {
             })
             .returning("id")
         )
-        .insertInto("conversation_participants")
-        .values([
-            { conversation_id: convId, user_id: session.user.id, role: 'admin' },
-            { conversation_id: convId, user_id: targetUser.id, role: 'member' }
-        ])
-        .execute();
+            .insertInto("conversation_participants")
+            .values([
+                { conversation_id: convId, user_id: session.user.id, role: 'admin' },
+                { conversation_id: convId, user_id: targetUser.id, role: 'member' }
+            ])
+            .execute();
 
         redirect(`/messages/${convId}`);
     }

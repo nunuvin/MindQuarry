@@ -78,7 +78,6 @@ CREATE TABLE IF NOT EXISTS mq_public.queries (
     user_id VARCHAR(255) REFERENCES mq_auth."user"(id) ON DELETE CASCADE,
     title VARCHAR(500),
     body TEXT,
-    views INTEGER DEFAULT 0,
     score INTEGER DEFAULT 0,
     accepted_answer_id UUID,
     is_hidden BOOLEAN DEFAULT false,
@@ -127,6 +126,11 @@ CREATE TABLE IF NOT EXISTS mq_public.answer_votes (
 CREATE TABLE IF NOT EXISTS mq_public.tags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) UNIQUE
+);
+
+CREATE UNLOGGED TABLE IF NOT EXISTS mq_public.query_views (
+    query_id UUID PRIMARY KEY REFERENCES mq_public.queries(id) ON DELETE CASCADE,
+    views INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS mq_public.query_tags (

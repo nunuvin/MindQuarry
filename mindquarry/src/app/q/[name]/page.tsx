@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { sql } from "kysely";
 
 export default async function QuarryPage({ params }: { params: Promise<{ name: string }> }) {
     const rawHeaders = await headers();
@@ -28,9 +29,11 @@ export default async function QuarryPage({ params }: { params: Promise<{ name: s
 
     const queries = await db.selectFrom("queries")
         .leftJoin("user", "user.id", "queries.user_id")
-        .select([
-            "queries.id", "queries.title", "queries.body", "queries.score", "queries.views",
-            "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username"
+        .leftJoin("query_views", "query_views.query_id", "queries.id")
+        .select((eb) => [
+            "queries.id", "queries.title", "queries.body", "queries.score",
+            "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
+            eb.fn.coalesce("query_views.views", sql<number>`0`).as("views")
         ])
         .where("quarry_id", "=", quarry.id)
         .where("is_hidden", "=", false)
