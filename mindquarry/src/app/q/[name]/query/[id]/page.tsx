@@ -6,9 +6,10 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { CopyLinkButton } from "./CopyLinkButton";
-import { TipTapEditor } from "@/components/TipTapEditor";
 import { TipTapRenderer } from "@/components/TipTapRenderer";
 import { isRateLimited } from "@/lib/rateLimit";
+import { sql } from "kysely";
+import { SubmitAnswerForm } from "./SubmitAnswerForm";
 
 export default async function QueryDiscussionPage({ params }: { params: Promise<{ name: string, id: string }> }) {
     const rawHeaders = await headers();
@@ -34,9 +35,11 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
 
     const query = await db.selectFrom("queries")
         .leftJoin("user", "user.id", "queries.user_id")
-        .select([
-            "queries.id", "queries.title", "queries.body", "queries.score", "queries.views",
-            "queries.accepted_answer_id", "queries.created_at", "queries.user_id as author_id", "user.name", "user.displayUsername", "user.username"
+        .leftJoin("query_views", "query_views.query_id", "queries.id")
+        .select((eb) => [
+            "queries.id", "queries.title", "queries.body", "queries.score",
+            "queries.accepted_answer_id", "queries.created_at", "queries.user_id as author_id", "user.name", "user.displayUsername", "user.username",
+            eb.fn.coalesce("query_views.views", sql<number>`0`).as("views")
         ])
         .where("queries.id", "=", resolvedParams.id)
         .where("is_hidden", "=", false)
@@ -57,7 +60,10 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         .execute();
 
     // Fire and forget view increment
-    db.updateTable("queries").set((eb) => ({ views: eb('views', '+', 1) })).where("id", "=", query.id).execute().catch(()=>null);
+    db.insertInto("query_views")
+        .values({ query_id: query.id, views: 1 })
+        .onConflict((oc) => oc.column("query_id").doUpdateSet({ views: sql<number>`query_views.views + 1` }))
+        .execute().catch(() => null);
 
     async function submitAnswer(formData: FormData) {
         "use server";
@@ -121,19 +127,21 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         if (value !== 1 && value !== -1) return;
 
         try {
-            const existing = await db.selectFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-            if (existing && 'value' in existing) {
-                if (existing.value === value) {
-                    await db.deleteFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
-                    await db.updateTable("queries").set((eb) => ({ score: eb('score', '-', value) })).where("id", "=", query!.id).execute();
+            await db.transaction().execute(async (trx) => {
+                const existing = await trx.selectFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).executeTakeFirst();
+                if (existing && 'value' in existing) {
+                    if (existing.value === value) {
+                        await trx.deleteFrom("query_votes").where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
+                        await trx.updateTable("queries").set((eb) => ({ score: eb('score', '-', value) })).where("id", "=", query!.id).execute();
+                    } else {
+                        await trx.updateTable("query_votes").set({ value }).where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
+                        await trx.updateTable("queries").set((eb) => ({ score: eb('score', '+', value * 2) })).where("id", "=", query!.id).execute();
+                    }
                 } else {
-                    await db.updateTable("query_votes").set({ value }).where("query_id", "=", query!.id).where("user_id", "=", session.user.id).execute();
-                    await db.updateTable("queries").set((eb) => ({ score: eb('score', '+', value * 2) })).where("id", "=", query!.id).execute();
+                    await trx.insertInto("query_votes").values({ query_id: query!.id, user_id: session.user.id, value }).execute();
+                    await trx.updateTable("queries").set((eb) => ({ score: eb('score', '+', value) })).where("id", "=", query!.id).execute();
                 }
-            } else {
-                await db.insertInto("query_votes").values({ query_id: query!.id, user_id: session.user.id, value }).execute();
-                await db.updateTable("queries").set((eb) => ({ score: eb('score', '+', value) })).where("id", "=", query!.id).execute();
-            }
+            });
             revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
         } catch(e) {}
     }
@@ -189,13 +197,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                     {session?.user && (
                                         <div className="mt-4 hidden has-[:checked]:block">
                                             <input type="checkbox" id={`reply-${a.id}`} className="peer hidden" />
-                                            <form action={submitAnswer} className="mt-2 space-y-2">
-                                                <input type="hidden" name="parent_id" value={a.id} />
-                                                <TipTapEditor name="body" />
-                                                <button type="submit" className="px-4 py-2 bg-blue-500 text-white font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] cursor-pointer hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all text-xs">
-                                                    Post Reply
-                                                </button>
-                                            </form>
+                                            <SubmitAnswerForm parentId={a.id} submitAction={submitAnswer} />
                                         </div>
                                     )}
                                 </div>
@@ -257,12 +259,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
             {session?.user && (
                 <div className="mb-12 p-6 bg-muted/30 border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
                     <h3 className="font-black uppercase mb-4">Your Answer</h3>
-                    <form action={submitAnswer} className="space-y-4">
-                        <TipTapEditor name="body" />
-                        <button type="submit" className="px-8 py-3 bg-blue-500 text-white font-black uppercase border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer hover:bg-blue-600 transition-colors">
-                            Post Answer
-                        </button>
-                    </form>
+                    <SubmitAnswerForm submitAction={submitAnswer} />
                 </div>
             )}
 

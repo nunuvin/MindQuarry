@@ -78,7 +78,6 @@ CREATE TABLE IF NOT EXISTS mq_public.queries (
     user_id VARCHAR(255) REFERENCES mq_auth."user"(id) ON DELETE CASCADE,
     title VARCHAR(500),
     body TEXT,
-    views INTEGER DEFAULT 0,
     score INTEGER DEFAULT 0,
     accepted_answer_id UUID,
     is_hidden BOOLEAN DEFAULT false,
@@ -129,6 +128,11 @@ CREATE TABLE IF NOT EXISTS mq_public.tags (
     name VARCHAR(100) UNIQUE
 );
 
+CREATE UNLOGGED TABLE IF NOT EXISTS mq_public.query_views (
+    query_id UUID PRIMARY KEY REFERENCES mq_public.queries(id) ON DELETE CASCADE,
+    views INTEGER DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS mq_public.query_tags (
     query_id UUID REFERENCES mq_public.queries(id) ON DELETE CASCADE,
     tag_id UUID REFERENCES mq_public.tags(id) ON DELETE CASCADE,
@@ -159,6 +163,32 @@ CREATE TABLE IF NOT EXISTS mq_public.messages (
     body TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Notify trigger for new messages
+CREATE OR REPLACE FUNCTION mq_public.notify_new_message() RETURNS TRIGGER AS $$
+BEGIN
+    PERFORM pg_notify('new_message_event', NEW.conversation_id::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_notify_new_message ON mq_public.messages;
+CREATE TRIGGER trigger_notify_new_message
+AFTER INSERT ON mq_public.messages
+FOR EACH ROW EXECUTE FUNCTION mq_public.notify_new_message();
+
+-- Notify trigger for read receipts
+CREATE OR REPLACE FUNCTION mq_public.notify_read_receipt() RETURNS TRIGGER AS $$
+BEGIN
+    PERFORM pg_notify('read_receipt_event', NEW.conversation_id::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_notify_read_receipt ON mq_public.conversation_participants;
+CREATE TRIGGER trigger_notify_read_receipt
+AFTER UPDATE OF last_read_at ON mq_public.conversation_participants
+FOR EACH ROW EXECUTE FUNCTION mq_public.notify_read_receipt();
 
 CREATE TABLE IF NOT EXISTS mq_public.user_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -191,6 +221,16 @@ CREATE TABLE IF NOT EXISTS mq_public.global_admins (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS mq_public.background_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_type VARCHAR(100) NOT NULL,
+    payload JSONB DEFAULT '{}',
+    status VARCHAR(50) DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    locked_at TIMESTAMPTZ,
+    locked_by VARCHAR(255)
+);
+
 GRANT USAGE ON SCHEMA mq_public TO mqauth_user;
 GRANT CREATE ON SCHEMA mq_public TO mqauth_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA mq_public TO mqauth_user;
@@ -214,3 +254,12 @@ CREATE INDEX IF NOT EXISTS idx_user_reports_quarry_id ON mq_public.user_reports(
 COMMENT ON TABLE mq_public.profiles IS 'Extended user profiles bridging to Better Auth identities';
 COMMENT ON TABLE mq_public.queries IS 'Top-level questions/posts submitted by users to Quarries';
 COMMENT ON TABLE mq_public.answers IS 'Replies to queries or nested answers (Reddit-style)';
+
+-- Create a pg_cron job to regularly clean up expired sessions from the UNLOGGED table.
+-- This prevents the session table from infinitely growing and consuming memory.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+        PERFORM cron.schedule('cleanup_expired_sessions', '0 * * * *', $$DELETE FROM mq_auth.session WHERE "expiresAt" < NOW()$$);
+    END IF;
+END $$;

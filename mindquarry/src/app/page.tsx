@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSiteSettings } from "@/lib/settings";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { sql } from "kysely";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
     const settings = await getSiteSettings();
@@ -11,31 +12,34 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
     const resolvedParams = await searchParams;
     const sort = resolvedParams.sort === "top" ? "top" : "new";
 
-    let followFeed: any[] = [];
+    let followFeedQuery = null;
     if (session?.user) {
-        followFeed = await db.selectFrom("queries")
+        followFeedQuery = db.selectFrom("queries")
             .leftJoin("user", "user.id", "queries.user_id")
             .leftJoin("quarries", "quarries.id", "queries.quarry_id")
+            .leftJoin("query_views", "query_views.query_id", "queries.id")
             .innerJoin("follows", "follows.following_id", "queries.user_id")
-            .select([
-                "queries.id", "queries.title", "queries.body", "queries.score", "queries.views",
+            .select((eb) => [
+                "queries.id", "queries.title", "queries.body", "queries.score",
                 "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
-                "quarries.name as quarry_name"
+                "quarries.name as quarry_name",
+                eb.fn.coalesce("query_views.views", sql<number>`0`).as("views")
             ])
             .where("follows.follower_id", "=", session.user.id)
             .where("queries.is_hidden", "=", false)
             .orderBy("queries.created_at", "desc")
-            .limit(5)
-            .execute();
+            .limit(5);
     }
 
     let queriesQuery = db.selectFrom("queries")
         .leftJoin("user", "user.id", "queries.user_id")
         .leftJoin("quarries", "quarries.id", "queries.quarry_id")
-        .select([
-            "queries.id", "queries.title", "queries.body", "queries.score", "queries.views",
+        .leftJoin("query_views", "query_views.query_id", "queries.id")
+        .select((eb) => [
+            "queries.id", "queries.title", "queries.body", "queries.score",
             "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
-            "quarries.name as quarry_name"
+            "quarries.name as quarry_name",
+            eb.fn.coalesce("query_views.views", sql<number>`0`).as("views")
         ])
         .where("queries.is_hidden", "=", false);
 
@@ -45,7 +49,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
         queriesQuery = queriesQuery.orderBy("queries.created_at", "desc");
     }
 
-    const queries = await queriesQuery.limit(20).execute();
+    // Parallelize both feed queries to save connection time and latency
+    const [followFeed, queries] = await Promise.all([
+        followFeedQuery ? followFeedQuery.execute() : Promise.resolve([]),
+        queriesQuery.limit(20).execute()
+    ]);
 
     return (
         <div className="max-w-5xl mx-auto mt-8 p-4 grid grid-cols-1 md:grid-cols-4 gap-8">

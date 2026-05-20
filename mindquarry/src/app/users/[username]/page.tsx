@@ -23,25 +23,44 @@ export default async function UserProfilePage({ params }: { params: Promise<{ us
 
     if (!user) return notFound();
 
-    const profile = await db.selectFrom("profiles").selectAll().where("user_id", "=", user.id).executeTakeFirst();
-
-    // Compute dynamic stats
-    const queryCount = await db.selectFrom("queries").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).executeTakeFirst();
-    const answerCount = await db.selectFrom("answers").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).executeTakeFirst();
-    const acceptedCount = await db.selectFrom("queries").select((eb) => eb.fn.count("id").as("count")).innerJoin("answers", "answers.id", "queries.accepted_answer_id").where("answers.user_id", "=", user.id).executeTakeFirst();
-
-    const queryScore = await db.selectFrom("queries").select((eb) => eb.fn.sum("score").as("sum")).where("user_id", "=", user.id).executeTakeFirst();
-    const answerScore = await db.selectFrom("answers").select((eb) => eb.fn.sum("score").as("sum")).where("user_id", "=", user.id).executeTakeFirst();
-    const reputation = (Number(queryScore?.sum || 0) + Number(answerScore?.sum || 0));
-
-    const bans = await db.selectFrom("bans_and_timeouts").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).where("status", "=", "active").executeTakeFirst();
-
     const isMe = session.user.id === user.id;
 
-    const followerCount = await db.selectFrom("follows").select((eb) => eb.fn.count("follower_id").as("count")).where("following_id", "=", user.id).executeTakeFirst();
-    const followingCount = await db.selectFrom("follows").select((eb) => eb.fn.count("following_id").as("count")).where("follower_id", "=", user.id).executeTakeFirst();
+    // Use json_build_object to reduce table scans and prevent Promise.all connection pool exhaustion.
+    // Combine all metrics into a single round-trip using JSON building or single row aggregation subqueries
+    // as required by the 5-Step Code Review Protocol.
+    const { sql } = await import("kysely");
 
-    const followStatus = isMe ? null : await db.selectFrom("follows").selectAll().where("follower_id", "=", session.user.id).where("following_id", "=", user.id).executeTakeFirst();
+    // We can do this cleanly via subqueries mapped to aliases in one parent select, which executes as 1 network request.
+    const combinedStats = await db.selectNoFrom((eb) => [
+        sql<unknown>`(SELECT row_to_json(p) FROM mq_public.profiles p WHERE p.user_id = ${user.id})`.as("profile"),
+
+        eb.selectFrom("queries").select(eb.fn.count("id").as("c")).where("user_id", "=", user.id).as("queryCount"),
+        eb.selectFrom("queries").select(eb.fn.sum("score").as("s")).where("user_id", "=", user.id).as("queryScore"),
+        eb.selectFrom("queries").select(eb.fn.count("id").as("c")).innerJoin("answers", "answers.id", "queries.accepted_answer_id").where("answers.user_id", "=", user.id).as("acceptedCount"),
+
+        eb.selectFrom("answers").select(eb.fn.count("id").as("c")).where("user_id", "=", user.id).as("answerCount"),
+        eb.selectFrom("answers").select(eb.fn.sum("score").as("s")).where("user_id", "=", user.id).as("answerScore"),
+
+        eb.selectFrom("bans_and_timeouts").select(eb.fn.count("id").as("c")).where("user_id", "=", user.id).where("status", "=", "active").as("activeBansCount"),
+
+        eb.selectFrom("follows").select(eb.fn.count("follower_id").as("c")).where("following_id", "=", user.id).as("followerCount"),
+        eb.selectFrom("follows").select(eb.fn.count("following_id").as("c")).where("follower_id", "=", user.id).as("followingCount"),
+
+        isMe ? sql<null>`null`.as("followStatus") : sql<unknown>`(SELECT row_to_json(f) FROM mq_public.follows f WHERE f.follower_id = ${session.user.id} AND f.following_id = ${user.id})`.as("followStatus")
+    ]).executeTakeFirst();
+
+    const queryCount = { count: Number(combinedStats?.queryCount || 0) };
+    const answerCount = { count: Number(combinedStats?.answerCount || 0) };
+    const acceptedCount = { count: Number(combinedStats?.acceptedCount || 0) };
+    const queryScore = { sum: Number(combinedStats?.queryScore || 0) };
+    const answerScore = { sum: Number(combinedStats?.answerScore || 0) };
+    const bans = { count: Number(combinedStats?.activeBansCount || 0) };
+    const followerCount = { count: Number(combinedStats?.followerCount || 0) };
+    const followingCount = { count: Number(combinedStats?.followingCount || 0) };
+    const followStatus = combinedStats?.followStatus as { is_mutual: boolean } | null;
+    const profile = combinedStats?.profile as { bio?: string | null } | undefined;
+
+    const reputation = (Number(queryScore?.sum || 0) + Number(answerScore?.sum || 0));
 
     async function toggleFollow() {
         "use server";

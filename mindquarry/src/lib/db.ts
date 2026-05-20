@@ -132,7 +132,6 @@ interface QueriesTable {
     user_id: string | null;
     title: string | null;
     body: string | null;
-    views: number | null;
     score: number | null;
     accepted_answer_id: string | null;
     is_hidden: boolean | null;
@@ -171,6 +170,11 @@ interface AnswerVotesTable {
 interface TagsTable {
     id: string;
     name: string | null;
+}
+
+interface QueryViewsTable {
+    query_id: string;
+    views: number | null;
 }
 
 interface QueryTagsTable {
@@ -244,6 +248,7 @@ export interface Database {
     query_votes: QueryVotesTable;
     answer_votes: AnswerVotesTable;
     tags: TagsTable;
+    query_views: QueryViewsTable;
     query_tags: QueryTagsTable;
     conversations: ConversationsTable;
     conversation_participants: ConversationParticipantsTable;
@@ -254,6 +259,15 @@ export interface Database {
         user_id: string;
         granted_by_id: string | null;
         created_at: Date | null;
+    };
+    background_jobs: {
+        id: string;
+        job_type: string;
+        payload: unknown;
+        status: string | null;
+        created_at: Date | null;
+        locked_at: Date | null;
+        locked_by: string | null;
     };
 }
 
