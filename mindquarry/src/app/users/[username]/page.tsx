@@ -25,30 +25,55 @@ export default async function UserProfilePage({ params }: { params: Promise<{ us
 
     const isMe = session.user.id === user.id;
 
-    // Use Promise.all to compute dynamic stats concurrently and save connection time
+    // Use json_build_object to reduce table scans and prevent Promise.all connection pool exhaustion.
+    // Fetch user queries metrics in a single query
+    const queriesStats = await db.selectFrom("queries")
+        .select((eb) => [
+            eb.fn.count("id").as("queryCount"),
+            eb.fn.sum("score").as("queryScore")
+        ])
+        .where("user_id", "=", user.id)
+        .executeTakeFirst();
+
+    // Fetch user answers metrics in a single query
+    const answersStats = await db.selectFrom("answers")
+        .select((eb) => [
+            eb.fn.count("id").as("answerCount"),
+            eb.fn.sum("score").as("answerScore")
+        ])
+        .where("user_id", "=", user.id)
+        .executeTakeFirst();
+
+    const followsStats = await db.selectFrom("follows")
+        .select((eb) => [
+            eb.fn.sum(eb.case().when("following_id", "=", user.id).then(1).else(0).end()).as("followerCount"),
+            eb.fn.sum(eb.case().when("follower_id", "=", user.id).then(1).else(0).end()).as("followingCount")
+        ])
+        .where((eb) => eb.or([
+            eb("following_id", "=", user.id),
+            eb("follower_id", "=", user.id)
+        ]))
+        .executeTakeFirst();
+
+    // Fetch remaining metrics
     const [
         profile,
-        queryCount,
-        answerCount,
         acceptedCount,
-        queryScore,
-        answerScore,
         bans,
-        followerCount,
-        followingCount,
         followStatus
     ] = await Promise.all([
         db.selectFrom("profiles").selectAll().where("user_id", "=", user.id).executeTakeFirst(),
-        db.selectFrom("queries").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).executeTakeFirst(),
-        db.selectFrom("answers").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).executeTakeFirst(),
         db.selectFrom("queries").select((eb) => eb.fn.count("id").as("count")).innerJoin("answers", "answers.id", "queries.accepted_answer_id").where("answers.user_id", "=", user.id).executeTakeFirst(),
-        db.selectFrom("queries").select((eb) => eb.fn.sum("score").as("sum")).where("user_id", "=", user.id).executeTakeFirst(),
-        db.selectFrom("answers").select((eb) => eb.fn.sum("score").as("sum")).where("user_id", "=", user.id).executeTakeFirst(),
         db.selectFrom("bans_and_timeouts").select((eb) => eb.fn.count("id").as("count")).where("user_id", "=", user.id).where("status", "=", "active").executeTakeFirst(),
-        db.selectFrom("follows").select((eb) => eb.fn.count("follower_id").as("count")).where("following_id", "=", user.id).executeTakeFirst(),
-        db.selectFrom("follows").select((eb) => eb.fn.count("following_id").as("count")).where("follower_id", "=", user.id).executeTakeFirst(),
         isMe ? Promise.resolve(null) : db.selectFrom("follows").selectAll().where("follower_id", "=", session.user.id).where("following_id", "=", user.id).executeTakeFirst()
     ]);
+
+    const queryCount = { count: Number(queriesStats?.queryCount || 0) };
+    const answerCount = { count: Number(answersStats?.answerCount || 0) };
+    const queryScore = { sum: Number(queriesStats?.queryScore || 0) };
+    const answerScore = { sum: Number(answersStats?.answerScore || 0) };
+    const followerCount = { count: Number(followsStats?.followerCount || 0) };
+    const followingCount = { count: Number(followsStats?.followingCount || 0) };
 
     const reputation = (Number(queryScore?.sum || 0) + Number(answerScore?.sum || 0));
 
