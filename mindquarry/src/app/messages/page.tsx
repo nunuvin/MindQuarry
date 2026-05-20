@@ -7,6 +7,7 @@ import Link from "next/link";
 import { generateUUID } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { isRateLimited } from "@/lib/rateLimit";
+import { MindQuarryConfig } from "@/lib/config";
 
 export default async function MessagesPage() {
     const rawHeaders = await headers();
@@ -26,34 +27,31 @@ export default async function MessagesPage() {
         );
     }
 
-    const conversations = await db.selectFrom("conversation_participants")
-        .innerJoin("conversations", "conversations.id", "conversation_participants.conversation_id")
+    const rawConversations = await db.selectFrom("conversation_participants as cp")
+        .innerJoin("conversations as c", "c.id", "cp.conversation_id")
+        .leftJoin("conversation_participants as sibling", (join) => join
+            .onRef("sibling.conversation_id", "=", "c.id")
+            .on("sibling.user_id", "!=", session.user.id)
+        )
+        .leftJoin("user as u", "u.id", "sibling.user_id")
         .select([
-            "conversations.id", "conversations.is_group", "conversations.name", "conversations.updated_at"
+            "c.id",
+            "c.is_group",
+            "c.name as group_name",
+            "c.updated_at",
+            "u.name as user_name",
+            "u.displayUsername",
+            "u.username"
         ])
-        .where("conversation_participants.user_id", "=", session.user.id)
-        .orderBy("conversations.updated_at", "desc")
+        .where("cp.user_id", "=", session.user.id)
+        .orderBy("c.updated_at", "desc")
         .execute();
 
-    // Fetch details for 1-on-1 chats
-    const enrichedConversations = await Promise.all(conversations.map(async (conv) => {
-        if (!conv.is_group) {
-            const otherUser = await db.selectFrom("conversation_participants")
-                .innerJoin("user", "user.id", "conversation_participants.user_id")
-                .select(["user.name", "user.displayUsername", "user.username"])
-                .where("conversation_id", "=", conv.id)
-                .where("user_id", "!=", session.user.id)
-                .executeTakeFirst();
-
-            return {
-                ...conv,
-                displayName: otherUser ? (otherUser.displayUsername || otherUser.username || otherUser.name) : "Unknown User"
-            };
-        }
-        return {
-            ...conv,
-            displayName: conv.name || "Group Chat"
-        };
+    const enrichedConversations = rawConversations.map(conv => ({
+        id: conv.id,
+        is_group: conv.is_group,
+        updated_at: conv.updated_at,
+        displayName: conv.is_group ? (conv.group_name || "Group Chat") : (conv.displayUsername || conv.username || conv.user_name || "Unknown User")
     }));
 
     async function startNewChat(formData: FormData) {
@@ -62,8 +60,8 @@ export default async function MessagesPage() {
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
 
-        // Rate limit new chats: Max 3 new chats per minute
-        if (isRateLimited(session.user.id, "new_chat", 3, 60000)) return;
+        // Rate limit new chats
+        if (isRateLimited(session.user.id, "new_chat", MindQuarryConfig.MESSAGING.MAX_NEW_CHATS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) return;
 
         const targetUsername = formData.get("username") as string;
         if (!targetUsername) return;
@@ -75,39 +73,51 @@ export default async function MessagesPage() {
         const targetProfile = await db.selectFrom("profiles").select("messaging_privacy").where("user_id", "=", targetUser.id).executeTakeFirst();
         const privacy = targetProfile?.messaging_privacy || 'anyone';
 
-        // Mutual follow bypasses all
-        const isMutual = await db.selectFrom("follows").select("is_mutual").where("follower_id", "=", session.user.id).where("following_id", "=", targetUser.id).executeTakeFirst();
+        // 1. Fetch all privacy data primitives concurrently
+        const isMutualResult = await db.selectFrom("follows as f1")
+            .selectAll()
+            .where("f1.follower_id", "=", session.user.id)
+            .where("f1.following_id", "=", targetUser.id)
+            .where("f1.is_mutual", "=", true)
+            .executeTakeFirst();
 
-        if (!isMutual?.is_mutual) {
+        const sharesQuarryResult = await db.selectFrom("quarry_members as qm1")
+            .innerJoin("quarry_members as qm2", "qm1.quarry_id", "qm2.quarry_id")
+            .select("qm1.quarry_id")
+            .where("qm1.user_id", "=", session.user.id)
+            .where("qm2.user_id", "=", targetUser.id)
+            .executeTakeFirst();
+
+        const isMutual = !!isMutualResult;
+        const sharesQuarry = !!sharesQuarryResult;
+
+        if (!isMutual) {
             if (privacy === 'mutuals') {
-                return; // Blocked: target requires mutual follow
+                return; // Blocked safely
             }
-            if (privacy === 'quarry_members') {
-                // Check if they share any quarry
-                const sharedQuarry = await db.selectFrom("quarry_members as qm1")
-                    .innerJoin("quarry_members as qm2", "qm1.quarry_id", "qm2.quarry_id")
-                    .select("qm1.quarry_id")
-                    .where("qm1.user_id", "=", session.user.id)
-                    .where("qm2.user_id", "=", targetUser.id)
-                    .executeTakeFirst();
-                if (!sharedQuarry) return; // Blocked: no shared quarry
+            if (privacy === 'quarry_members' && !sharesQuarry) {
+                return; // Blocked safely
             }
         }
 
         const convId = generateUUID();
 
-        await db.transaction().execute(async (trx) => {
-            await trx.insertInto("conversations").values({
+        // Executed as a single network round-trip via CTE
+        await db.with("new_conv", (db) => db
+            .insertInto("conversations")
+            .values({
                 id: convId,
                 is_group: false,
                 created_by_id: session.user.id
-            }).execute();
-
-            await trx.insertInto("conversation_participants").values([
-                { conversation_id: convId, user_id: session.user.id, role: 'admin' },
-                { conversation_id: convId, user_id: targetUser.id, role: 'member' }
-            ]).execute();
-        });
+            })
+            .returning("id")
+        )
+        .insertInto("conversation_participants")
+        .values([
+            { conversation_id: convId, user_id: session.user.id, role: 'admin' },
+            { conversation_id: convId, user_id: targetUser.id, role: 'member' }
+        ])
+        .execute();
 
         redirect(`/messages/${convId}`);
     }

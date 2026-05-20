@@ -5,11 +5,12 @@ jest.mock('@/lib/db', () => ({
   db: {
     selectFrom: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     execute: jest.fn().mockResolvedValue([
-      { id: 'msg-1', is_group: false, name: null, updated_at: new Date() }
+      { id: 'msg-1', is_group: false, name: null, updated_at: new Date(), displayUsername: 'bobUser' }
     ]),
     executeTakeFirst: jest.fn().mockResolvedValue({
       name: 'Bob', displayUsername: 'bobUser', username: 'bob123'

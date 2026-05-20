@@ -23,14 +23,15 @@ export default async function AdminUsersPage() {
         );
     }
 
-    const settings = await getSiteSettings();
+    const [settings, admins] = await Promise.all([
+        getSiteSettings(),
+        db.selectFrom("global_admins")
+            .innerJoin("user", "user.id", "global_admins.user_id")
+            .select(["global_admins.user_id", "user.name", "user.displayUsername", "user.username"])
+            .execute()
+    ]);
 
-    const admins = await db.selectFrom("global_admins")
-        .innerJoin("user", "user.id", "global_admins.user_id")
-        .select(["global_admins.user_id", "user.name", "user.displayUsername", "user.username"])
-        .execute();
-
-    const firstAdmin = await db.selectFrom("user").select(["id", "name", "displayUsername", "username"]).where("id", "=", settings?.first_admin_user_id!).executeTakeFirst();
+    const firstAdmin = settings?.first_admin_user_id ? await db.selectFrom("user").select(["id", "name", "displayUsername", "username"]).where("id", "=", settings.first_admin_user_id).executeTakeFirst() : null;
 
     async function addAdmin(formData: FormData) {
         "use server";
