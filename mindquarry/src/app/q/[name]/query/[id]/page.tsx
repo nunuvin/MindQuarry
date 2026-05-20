@@ -6,10 +6,10 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { CopyLinkButton } from "./CopyLinkButton";
-import { TipTapEditor } from "@/components/TipTapEditor";
 import { TipTapRenderer } from "@/components/TipTapRenderer";
 import { isRateLimited } from "@/lib/rateLimit";
 import { sql } from "kysely";
+import { SubmitAnswerForm } from "./SubmitAnswerForm";
 
 export default async function QueryDiscussionPage({ params }: { params: Promise<{ name: string, id: string }> }) {
     const rawHeaders = await headers();
@@ -197,13 +197,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                     {session?.user && (
                                         <div className="mt-4 hidden has-[:checked]:block">
                                             <input type="checkbox" id={`reply-${a.id}`} className="peer hidden" />
-                                            <form action={submitAnswer} className="mt-2 space-y-2">
-                                                <input type="hidden" name="parent_id" value={a.id} />
-                                                <TipTapEditor name="body" />
-                                                <button type="submit" className="px-4 py-2 bg-blue-500 text-white font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] cursor-pointer hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all text-xs">
-                                                    Post Reply
-                                                </button>
-                                            </form>
+                                            <SubmitAnswerForm parentId={a.id} submitAction={submitAnswer} />
                                         </div>
                                     )}
                                 </div>
@@ -265,12 +259,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
             {session?.user && (
                 <div className="mb-12 p-6 bg-muted/30 border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
                     <h3 className="font-black uppercase mb-4">Your Answer</h3>
-                    <form action={submitAnswer} className="space-y-4">
-                        <TipTapEditor name="body" />
-                        <button type="submit" className="px-8 py-3 bg-blue-500 text-white font-black uppercase border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer hover:bg-blue-600 transition-colors">
-                            Post Answer
-                        </button>
-                    </form>
+                    <SubmitAnswerForm submitAction={submitAnswer} />
                 </div>
             )}
 

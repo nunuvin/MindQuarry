@@ -260,6 +260,15 @@ export interface Database {
         granted_by_id: string | null;
         created_at: Date | null;
     };
+    background_jobs: {
+        id: string;
+        job_type: string;
+        payload: unknown;
+        status: string | null;
+        created_at: Date | null;
+        locked_at: Date | null;
+        locked_by: string | null;
+    };
 }
 
 const dialect = new PostgresDialect({

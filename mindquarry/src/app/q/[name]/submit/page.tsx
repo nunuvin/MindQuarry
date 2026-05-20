@@ -3,8 +3,8 @@ import { db } from "@/lib/db";
 import { generateUUID } from "@/lib/utils";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { TipTapEditor } from "@/components/TipTapEditor";
 import { isRateLimited } from "@/lib/rateLimit";
+import { SubmitQueryForm } from "./SubmitQueryForm";
 
 export default async function SubmitQueryPage({ params }: { params: Promise<{ name: string }> }) {
     const rawHeaders = await headers();
@@ -58,19 +58,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
     return (
         <div className="max-w-2xl mx-auto mt-12 p-8 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff]">
             <h1 className="text-2xl font-black mb-6 uppercase border-b-2 border-black dark:border-white pb-2">Submit Query to q/{quarry.name}</h1>
-            <form action={submitQuery} className="space-y-6">
-                <div>
-                    <label className="block font-bold mb-2">Title</label>
-                    <input name="title" required className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-bold" placeholder="What is your question?" />
-                </div>
-                <div>
-                    <label className="block font-bold mb-2">Body</label>
-                    <TipTapEditor name="body" />
-                </div>
-                <button type="submit" className="cursor-pointer w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
-                    Post Query
-                </button>
-            </form>
+            <SubmitQueryForm submitAction={submitQuery} />
         </div>
     );
 }
