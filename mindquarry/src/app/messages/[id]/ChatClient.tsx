@@ -3,6 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { TipTapEditor } from "@/components/TipTapEditor";
+import { TipTapRenderer } from "@/components/TipTapRenderer";
+import { hasRichTextContent } from "@/lib/utils";
+
+type SendMessageResult = {
+    ok: boolean;
+    error?: string;
+};
 
 export function ChatClient({
     conversationId,
@@ -24,34 +32,58 @@ export function ChatClient({
         username: string | null;
     }[];
     userId: string;
-    sendMessageAction: (formData: FormData) => Promise<void>;
+    sendMessageAction: (formData: FormData) => Promise<SendMessageResult>;
     otherParticipants: { user_id: string, last_read_at: Date | null }[];
 }) {
     const router = useRouter();
     const bottomRef = useRef<HTMLDivElement>(null);
-    const formRef = useRef<HTMLFormElement>(null);
 
     // Pending messages that failed to send
     const [pendingMessages, setPendingMessages] = useState<{ id: string, body: string }[]>([]);
+    const [composerBody, setComposerBody] = useState("");
+    const [sendError, setSendError] = useState("");
+    const [isSending, setIsSending] = useState(false);
+
+    const upsertPendingMessage = (id: string, body: string) => {
+        setPendingMessages((currentMessages) => {
+            if (currentMessages.some((message) => message.id === id)) {
+                return currentMessages.map((message) => message.id === id ? { ...message, body } : message);
+            }
+
+            return [...currentMessages, { id, body }];
+        });
+    };
 
     const handleSend = async (body: string, pendingId?: string) => {
-        if (!body.trim()) return;
-        const newId = pendingId || Math.random().toString(36).substring(7);
-
-        if (!pendingId) {
-            setPendingMessages(prev => [...prev, { id: newId, body }]);
-            formRef.current?.reset();
+        if (!hasRichTextContent(body)) {
+            setSendError("Message cannot be empty.");
+            return;
         }
+
+        const messageId = pendingId || globalThis.crypto?.randomUUID?.() || `pending-${Date.now()}`;
+
+        setSendError("");
+        setIsSending(true);
 
         try {
             const formData = new FormData();
             formData.append("body", body);
-            await sendMessageAction(formData);
-            // If successful, remove from pending
-            setPendingMessages(prev => prev.filter(m => m.id !== newId));
-        } catch (e) {
-            console.error("Failed to send message", e);
-            // Stays in pending list to allow retry
+            const result = await sendMessageAction(formData);
+
+            if (!result.ok) {
+                upsertPendingMessage(messageId, body);
+                setSendError(result.error || "Failed to send message.");
+                return;
+            }
+
+            setPendingMessages(prev => prev.filter(m => m.id !== messageId));
+            setComposerBody("");
+        } catch (error) {
+            console.error("Failed to send message", error);
+            upsertPendingMessage(messageId, body);
+            setSendError("Failed to send message.");
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -59,7 +91,7 @@ export function ChatClient({
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
         // Mark as read when messages change and we are viewing them
         fetch(`/api/chat/${conversationId}/read`, { method: "POST" }).catch(() => {});
-    }, [messages, conversationId]);
+    }, [messages, pendingMessages, conversationId]);
 
     useEffect(() => {
         const evtSource = new EventSource(`/api/chat/${conversationId}/stream`);
@@ -70,7 +102,7 @@ export function ChatClient({
                 if ((data.type === "new_message" || data.type === "read_receipt") && data.conversationId === conversationId) {
                     router.refresh();
                 }
-            } catch (e) {}
+            } catch {}
         };
 
         return () => {
@@ -79,15 +111,15 @@ export function ChatClient({
     }, [conversationId, router]);
 
     return (
-        <div className="max-w-3xl mx-auto mt-4 p-4 h-[calc(100vh-8rem)] flex flex-col">
-            <div className="flex items-center gap-4 mb-4">
-                <Link href="/messages" className="font-bold border-[3px] border-black dark:border-white w-10 h-10 flex items-center justify-center hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors cursor-pointer shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]">
+        <div className="page-shell flex h-[calc(100vh-5rem)] max-w-4xl flex-col">
+            <div className="mb-4 flex items-center gap-4">
+                <Link href="/messages" className="soft-button h-10 w-10 rounded-full p-0">
                     &larr;
                 </Link>
-                <h1 className="text-2xl font-black uppercase flex-1 truncate">{displayName}</h1>
+                <h1 className="font-display flex-1 truncate text-2xl font-semibold tracking-tight">{displayName}</h1>
             </div>
 
-            <div className="flex-1 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff] flex flex-col overflow-hidden relative">
+            <div className="soft-panel relative flex flex-1 flex-col overflow-hidden">
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col">
                     {messages.map(msg => {
                         const isMe = msg.sender_id === userId;
@@ -98,8 +130,8 @@ export function ChatClient({
                                         {isMe ? 'You' : (msg.displayUsername || msg.username || msg.name)}
                                     </span>
                                 </div>
-                                <div className={`p-3 border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] whitespace-pre-wrap text-sm font-medium ${isMe ? 'bg-blue-100 dark:bg-blue-900' : 'bg-muted/50'}`}>
-                                    {msg.body}
+                                <div className={`max-w-full rounded-[22px] border border-border/70 px-4 py-3 text-sm font-medium shadow-sm ${isMe ? 'bg-sky-500/10' : 'bg-card/80'}`}>
+                                    <TipTapRenderer content={msg.body || ""} />
                                 </div>
                                 {isMe && otherParticipants.some(p => p.last_read_at && msg.created_at && new Date(p.last_read_at) >= new Date(msg.created_at)) && (
                                     <span className="text-[10px] font-bold text-green-600 mt-1 self-end uppercase">Read ✓</span>
@@ -115,8 +147,8 @@ export function ChatClient({
                                     Failed to send
                                 </span>
                             </div>
-                            <div className="p-3 border-2 border-red-500 shadow-[2px_2px_0_0_#ef4444] whitespace-pre-wrap text-sm font-medium bg-red-100 dark:bg-red-900/30">
-                                {msg.body}
+                            <div className="max-w-full rounded-[22px] border border-red-500/50 bg-red-500/10 px-4 py-3 shadow-sm">
+                                <TipTapRenderer content={msg.body} />
                             </div>
                             <div className="flex gap-2 mt-2">
                                 <button onClick={() => setPendingMessages(prev => prev.filter(m => m.id !== msg.id))} className="text-xs font-bold text-red-500 hover:underline uppercase">Discard</button>
@@ -135,12 +167,16 @@ export function ChatClient({
                     <div ref={bottomRef} />
                 </div>
 
-                <div className="p-4 border-t-[3px] border-black dark:border-white bg-muted/20">
-                    <form ref={formRef} action={(formData) => handleSend(formData.get("body") as string)} className="flex gap-4">
-                        <input name="body" required autoComplete="off" placeholder="Type a message..." className="flex-1 p-3 border-2 border-black dark:border-white bg-card outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm" />
-                        <button type="submit" className="px-8 bg-blue-500 text-white font-black uppercase border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer hover:bg-blue-600 transition-colors">
-                            Send
-                        </button>
+                <div className="border-t border-border/70 bg-muted/20 p-4">
+                    <form action={(formData) => handleSend((formData.get("body") as string) || composerBody)} className="space-y-4">
+                        <TipTapEditor name="body" value={composerBody} onChange={setComposerBody} placeholder="Type a message, drop in a quote, add a link, or format code..." dense />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm text-muted-foreground">Use the toolbar for quotes, code blocks, links, and structured replies.</p>
+                            <button type="submit" disabled={isSending} className="soft-button-primary min-w-32 justify-center rounded-full px-6 py-3 disabled:cursor-not-allowed disabled:opacity-60">
+                                {isSending ? "Sending..." : "Send"}
+                            </button>
+                        </div>
+                        {sendError && <p className="text-sm font-semibold text-red-500">{sendError}</p>}
                     </form>
                 </div>
             </div>

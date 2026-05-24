@@ -5,9 +5,12 @@
 ## What Is Here Today
 
 - `navbar.tsx`: top navigation with search input and session-aware user area.
-- `sidebar.tsx`: collapsible sidebar shell.
+- `sidebar.tsx`: left navigation shell for desktop layouts.
 - `user-menu.tsx`: authenticated user actions.
+- `TipTapEditor.tsx`: reusable rich-text editor for questions, answers, and chat.
+- `TipTapRenderer.tsx`: sanitized renderer for stored rich-text content.
 - `theme-switcher.tsx`: theme UI.
+- `vote-controls.tsx`: reusable query and answer voting control.
 - `ui/`: low-level reusable primitives.
 
 ## Conventions

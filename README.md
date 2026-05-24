@@ -1,6 +1,6 @@
 # MindQuarry Workspace
 
-MindQuarry is a Stack Overflow-inspired project with a Next.js application and PostgreSQL setup scripts in the same repository.
+MindQuarry is a Stack Overflow-like Q&A application with community spaces, threaded discussions, moderation surfaces, and account-aware social features. This repository contains the Next.js app and the PostgreSQL bootstrap scripts used to run it locally.
 
 ## Workspace Layout
 
@@ -22,20 +22,45 @@ The application stack is defined by `mindquarry/package.json`:
 
 ## Current Status
 
-Implemented so far:
+Implemented:
 
-- Better Auth is configured in the app and exposed through a Next.js auth route.
-- Email/password signup and login pages are present.
-- Username-based auth support is enabled through Better Auth plugins.
-- A typed Kysely database layer exists for the Better Auth tables in the `mqauth` schema.
-- A protected user profile route exists at `mindquarry/src/app/users/[username]`.
-- Shared app chrome exists through the navbar, sidebar, and user menu components.
+- Better Auth with username and admin plugins, plus login and signup flows.
+- Feed, discovery sorting, community index, community detail, and query discussion routes.
+- Rich-text query and answer authoring with sanitized rendering.
+- Query and answer voting, per-thread subscriptions, and profile metric refresh on vote changes.
+- User follows, notification fan-out, mention notifications, unread notification counts, and a notifications page.
+- Public and restricted visibility rules for profiles and communities.
+- Direct messaging flows, including inbox, conversation pages, read tracking, and streaming updates.
+- Moderation and admin entry points such as reports, user management surfaces, and community queues.
+- Shared shell behaviors including the notification bell, collapsible sidebar, dismissible home promo rail, cookie notice, and user menu.
+- App-level TOML configuration in `mindquarry/mq_config.toml` for adjustable limits and notices.
+- Query view counting limited to one increment per viewer per configured time window.
 
-Still early or placeholder:
+Still missing or partial:
 
-- The home page is still the default starter page.
-- Sidebar destinations are placeholders.
-- Core Q&A features such as questions, answers, votes, tags, comments, moderation flows, and search indexing are not implemented yet.
+- Password reset and broader account recovery flows are not implemented yet.
+- Search, tagging, and reputation exist only in lightweight or incomplete form.
+- Several pages and flows still need deeper automated coverage despite the improved Jest and Playwright suites.
+- Moderation, admin tooling, and messaging are usable but not yet complete product-grade workflows.
+- Background work remains Node-script driven rather than a fuller production job orchestration setup.
+
+## Testing And Verification
+
+The app currently has:
+
+- Granular Jest unit and route-handler coverage.
+- Playwright browser smoke coverage for auth, home-shell interactions, and the communities index.
+- A full verification script that runs build, Jest in-band, and Playwright.
+
+Common commands:
+
+```bash
+cd mindquarry
+npm test -- --runInBand
+npm run test:coverage
+npm run test:e2e
+npm run verify
+```
 
 ## Local Setup
 
@@ -55,10 +80,20 @@ Still early or placeholder:
    ```
 
 3. Configure your `.env` file inside `mindquarry/` with your `DATABASE_URL`.
+   The app sets `search_path` to `mq_public,mqauth` in code, so auth and app tables resolve consistently.
 
-4. Start the dev server:
+4. Review `mindquarry/mq_config.toml` if you want to adjust feed limits, notification polling, cookie notice text, or the unique query-view window.
+
+5. Start the dev server:
    ```bash
    npm run dev
+   ```
+
+6. Run tests or the full verification pass before or after larger changes:
+   ```bash
+   npm run test:coverage
+   npm run test:e2e
+   npm run verify
    ```
 
 ### Existing Installation Updates
@@ -88,3 +123,15 @@ Project instructions live in `.github/`:
 
 - `.github/copilot-instructions.md`: repo-wide engineering guidance.
 - `.github/instructions/*.instructions.md`: folder-scoped instructions for app, components, lib, and SQL work.
+
+## VS Code Tasks
+
+Workspace tasks live in `.vscode/tasks.json` and wrap the current app scripts:
+
+- Build
+- Jest
+- Jest Coverage
+- Playwright
+- Verify
+- Verify then Dev
+- Session cleanup one-shot and watch tasks

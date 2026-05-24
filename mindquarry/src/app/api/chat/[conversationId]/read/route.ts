@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ con
             .execute();
 
         return new Response("OK", { status: 200 });
-    } catch (e) {
+    } catch {
         return new Response("Error updating read receipt", { status: 500 });
     }
 }

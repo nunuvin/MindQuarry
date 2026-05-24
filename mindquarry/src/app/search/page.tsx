@@ -1,38 +1,89 @@
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { sql } from "kysely";
+import { getRichTextPreview } from "@/lib/utils";
+import { getQueryTagMap, getTaggedQueryIds, searchTags } from "@/lib/tags";
 
-export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-    const resolvedParams = await searchParams;
-    const query = resolvedParams.q || "";
+function isMissingSearchFunction(error: unknown) {
+    return typeof error === "object"
+        && error !== null
+        && "code" in error
+        && error.code === "42883";
+}
 
-    let results: any[] = [];
-    let quarryResults: any[] = [];
-
-    if (query) {
-        // Find quarries via fuzzy match (pg_trgm)
-        quarryResults = await db.selectFrom("quarries")
+async function loadQuarryResults(query: string) {
+    try {
+        return await db.selectFrom("quarries")
             .selectAll()
-            .where(sql<boolean>`${sql.ref('name')} % ${query}`) // Uses pg_trgm % operator
-            .orderBy(sql`${sql.ref('name')} <-> ${query}`) // strict distance order
+            .where(sql<boolean>`${sql.ref('name')} % ${query}`)
+            .orderBy(sql`${sql.ref('name')} <-> ${query}`)
             .limit(5)
             .execute();
+    } catch (error) {
+        if (!isMissingSearchFunction(error)) {
+            throw error;
+        }
 
-        // Find queries via Full Text Search
-        results = await db.selectFrom("queries")
+        return db.selectFrom("quarries")
+            .selectAll()
+            .where(sql<boolean>`lower(coalesce(${sql.ref('name')}, '')) like lower(${`%${query}%`})`)
+            .orderBy("name", "asc")
+            .limit(5)
+            .execute();
+    }
+}
+
+async function loadQueryResults(query: string, taggedQueryIds: string[]) {
+    try {
+        return await db.selectFrom("queries")
             .leftJoin("user", "user.id", "queries.user_id")
             .leftJoin("quarries", "quarries.id", "queries.quarry_id")
             .select([
-                "queries.id", "queries.title", "queries.body", "queries.score", "queries.views",
+                "queries.id", "queries.title", "queries.body", "queries.score",
                 "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
                 "quarries.name as quarry_name"
             ])
             .where("queries.is_hidden", "=", false)
-            .where(sql<boolean>`to_tsvector('english', unaccent(${sql.ref('queries.title')} || ' ' || ${sql.ref('queries.body')})) @@ websearch_to_tsquery('english', unaccent(${query}))`)
+            .where(taggedQueryIds.length > 0
+                ? sql<boolean>`to_tsvector('english', unaccent(${sql.ref('queries.title')} || ' ' || ${sql.ref('queries.body')})) @@ websearch_to_tsquery('english', unaccent(${query})) or ${sql.ref('queries.id')} in (${sql.join(taggedQueryIds)})`
+                : sql<boolean>`to_tsvector('english', unaccent(${sql.ref('queries.title')} || ' ' || ${sql.ref('queries.body')})) @@ websearch_to_tsquery('english', unaccent(${query}))`)
             .orderBy(sql`ts_rank(to_tsvector('english', unaccent(${sql.ref('queries.title')} || ' ' || ${sql.ref('queries.body')})), websearch_to_tsquery('english', unaccent(${query})))`, "desc")
             .limit(20)
             .execute();
+    } catch (error) {
+        if (!isMissingSearchFunction(error)) {
+            throw error;
+        }
+
+        return db.selectFrom("queries")
+            .leftJoin("user", "user.id", "queries.user_id")
+            .leftJoin("quarries", "quarries.id", "queries.quarry_id")
+            .select([
+                "queries.id", "queries.title", "queries.body", "queries.score",
+                "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
+                "quarries.name as quarry_name"
+            ])
+            .where("queries.is_hidden", "=", false)
+            .where(taggedQueryIds.length > 0
+                ? sql<boolean>`lower(coalesce(${sql.ref('queries.title')}, '') || ' ' || coalesce(${sql.ref('queries.body')}, '')) like lower(${`%${query}%`}) or ${sql.ref('queries.id')} in (${sql.join(taggedQueryIds)})`
+                : sql<boolean>`lower(coalesce(${sql.ref('queries.title')}, '') || ' ' || coalesce(${sql.ref('queries.body')}, '')) like lower(${`%${query}%`})`)
+            .orderBy("queries.created_at", "desc")
+            .limit(20)
+            .execute();
     }
+}
+
+export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+    const resolvedParams = await searchParams;
+    const query = resolvedParams.q || "";
+    const matchingTags = query ? await searchTags(query) : [];
+    const taggedQueryIds = query ? await getTaggedQueryIds(query) : [];
+
+    const quarryResults = query ? await loadQuarryResults(query) : [];
+
+    const results = query ? await loadQueryResults(query, taggedQueryIds) : [];
+
+    const queryTagMap = await getQueryTagMap(results.map((entry) => entry.id));
 
     return (
         <div className="max-w-5xl mx-auto mt-8 p-4">
@@ -65,6 +116,19 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 </div>
             )}
 
+            {query && matchingTags.length > 0 && (
+                <div className="mb-12">
+                    <h2 className="font-black uppercase mb-4 text-muted-foreground">Matching tags</h2>
+                    <div className="flex flex-wrap gap-3">
+                        {matchingTags.map((tag) => (
+                            <span key={tag.id} className={`rounded-full border px-4 py-2 text-sm font-bold ${tag.quarry_id ? "border-sky-400/60 bg-sky-500/10 text-sky-700 dark:text-sky-300" : "border-black dark:border-white bg-card"}`}>
+                                #{tag.name}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {query && (
                 <div className="space-y-6">
                     <h2 className="font-black uppercase mb-4 text-muted-foreground">Posts found</h2>
@@ -80,8 +144,17 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                                 <Link href={`/q/${q.quarry_name}/query/${q.id}`} className="text-xl font-bold hover:underline mb-2 block line-clamp-2">
                                     {q.title}
                                 </Link>
-                                <p className="text-muted-foreground line-clamp-2 text-sm mb-4">
-                                    {q.body}
+                                {(queryTagMap.get(q.id) || []).length > 0 && (
+                                    <div className="mb-3 flex flex-wrap gap-2">
+                                        {(queryTagMap.get(q.id) || []).map((tag) => (
+                                            <span key={tag.id} className={`rounded-full border px-3 py-1 text-xs font-semibold ${tag.quarry_id ? "border-sky-400/60 bg-sky-500/10 text-sky-700 dark:text-sky-300" : "border-border/70 bg-muted/40 text-muted-foreground"}`}>
+                                                {tag.name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <p className="text-muted-foreground line-clamp-3 text-sm mb-4 break-words">
+                                    {getRichTextPreview(q.body || "") || "No details provided."}
                                 </p>
                             </div>
                         </div>
@@ -89,7 +162,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
                     {results.length === 0 && quarryResults.length === 0 && (
                         <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
-                            No results found for "{query}".
+                            No results found for <span className="font-semibold">{query}</span>.
                         </div>
                     )}
                 </div>

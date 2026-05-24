@@ -1,23 +1,18 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
-
-
-function isValidPassword(password: string) {
-    // Must be at least 8 chars, at least 1 letter, at least 1 number
-    return (
-        password.length >= 8 &&
-        /[a-zA-Z]/.test(password) &&
-        /[0-9]/.test(password)
-    );
+function getErrorMessage(error: unknown, fallback: string) {
+    return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export default function SignupPage() {
+    const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -61,19 +56,24 @@ export default function SignupPage() {
                 name: username, // Use username as name if no separate name field
             });
             if (session.error) throw new Error(session.error.message || "Signup failed");
-            window.location.href = "/";
-        } catch (err: any) {
-            setError(err.message || "Signup failed");
+            router.replace("/");
+            router.refresh();
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, "Signup failed"));
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="page-shell flex min-h-[calc(100vh-5rem)] items-center justify-center">
             <form
                 onSubmit={handleSignup}
-                className="bg-card p-8 rounded-lg shadow-md w-full max-w-md flex flex-col gap-6 border"
+                className="soft-panel w-full max-w-2xl px-8 py-10 sm:px-10 sm:py-12 flex flex-col gap-6"
             >
-                <h1 className="text-2xl font-bold text-center mb-2">Create your account</h1>
+                <div>
+                    <p className="font-display text-xs font-semibold uppercase tracking-[0.24em] text-sky-600 dark:text-sky-400">Join MindQuarry</p>
+                    <h1 className="font-display mt-3 text-3xl font-semibold tracking-tight">Create your account</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">Set up a profile that works across communities, messaging, and future reputation features.</p>
+                </div>
                 <div className="flex flex-col gap-2">
                     <label htmlFor="username" className="text-sm font-medium">Username</label>
                     <Input
@@ -84,6 +84,7 @@ export default function SignupPage() {
                         value={username}
                         onChange={e => setUsername(e.target.value)}
                         placeholder="your username"
+                        className="h-12 rounded-2xl"
                     />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -96,6 +97,7 @@ export default function SignupPage() {
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                         placeholder="you@example.com"
+                        className="h-12 rounded-2xl"
                     />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -109,16 +111,16 @@ export default function SignupPage() {
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                             placeholder="At least 8 chars, 1 non-letter"
-                            className={getPasswordBorder() + " pr-10"}
+                            className={getPasswordBorder() + " h-12 rounded-2xl pr-12"}
                         />
                         <button
                             type="button"
                             tabIndex={-1}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+                            className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-card/80 text-muted-foreground transition hover:text-foreground"
                             onClick={() => setShowPassword(v => !v)}
                             aria-label={showPassword ? "Hide password" : "Show password"}
                         >
-                            {showPassword ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+                            {showPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                         </button>
                     </div>
                     <ul className="mt-2 ml-1 flex flex-col gap-1 text-sm">
@@ -165,21 +167,21 @@ export default function SignupPage() {
                             value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)}
                             placeholder="Repeat password"
-                            className={getConfirmBorder() + " pr-10"}
+                            className={getConfirmBorder() + " h-12 rounded-2xl pr-12"}
                         />
                         <button
                             type="button"
                             tabIndex={-1}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+                            className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-card/80 text-muted-foreground transition hover:text-foreground"
                             onClick={() => setShowConfirm(v => !v)}
                             aria-label={showConfirm ? "Hide password" : "Show password"}
                         >
-                            {showConfirm ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+                            {showConfirm ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                         </button>
                     </div>
                 </div>
-                {error && <div className="text-red-500 text-sm">{error}</div>}
-                <Button type="submit" className="w-full" disabled={!passwordValid || !passwordsMatch}>
+                {error && <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">{error}</div>}
+                <Button type="submit" className="h-12 w-full rounded-full bg-sky-600 text-white hover:bg-sky-700" disabled={!passwordValid || !passwordsMatch}>
                     Sign up
                 </Button>
                 <div className="flex justify-between items-center mt-2">

@@ -1,8 +1,10 @@
-import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
+import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export default async function UserSettingsPage() {
     const rawHeaders = await headers();
@@ -25,55 +27,103 @@ export default async function UserSettingsPage() {
         if (!session?.user) return;
 
         const bio = formData.get("bio") as string;
-        const messaging_privacy = formData.get("messaging_privacy") as string;
+        const messagingPrivacy = (formData.get("messaging_privacy") as string) || "anyone";
+        const profileVisibility = (formData.get("profile_visibility") as string) || "public";
+        const mentionNotifications = (formData.get("mention_notifications") as string) || "all";
 
         await db.updateTable("profiles")
             .set({
                 bio: bio || null,
-                messaging_privacy: messaging_privacy || 'anyone',
-                updated_at: new Date()
+                messaging_privacy: messagingPrivacy,
+                profile_visibility: profileVisibility,
+                mention_notifications: mentionNotifications,
+                updated_at: new Date(),
             })
             .where("user_id", "=", session.user.id)
             .execute();
 
         revalidatePath("/settings");
-        revalidatePath(`/users/${session.user.username}`);
+        revalidatePath("/settings/follows");
+        revalidatePath("/notifications");
+        if (session.user.username) {
+            revalidatePath(`/users/${session.user.username}`);
+        }
     }
 
     return (
-        <div className="max-w-3xl mx-auto mt-12 p-8 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff]">
-            <h1 className="text-3xl font-black uppercase mb-8 border-b-[3px] border-black dark:border-white pb-2">Profile Settings</h1>
-
-            <form action={saveSettings} className="space-y-6">
-                <div>
-                    <label className="block font-bold mb-2 uppercase text-sm">Bio</label>
-                    <textarea
-                        name="bio"
-                        rows={5}
-                        defaultValue={profile?.bio || ""}
-                        className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                        placeholder="Tell the community about yourself..."
-                    ></textarea>
+        <div className="page-shell max-w-4xl">
+            <div className="soft-panel p-8 sm:p-10">
+                <div className="flex flex-col gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-400">Settings</p>
+                        <h1 className="font-display mt-2 text-3xl font-semibold tracking-tight">Profile Settings</h1>
+                        <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">Control who can see your profile, who can message you, and whether mentions should notify you outside threads you already joined.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                        <Link href="/settings/follows" className="soft-button">Things You Follow</Link>
+                        <Link href="/notifications" className="soft-button">Notifications</Link>
+                    </div>
                 </div>
 
-                <div>
-                    <label className="block font-bold mb-2 uppercase text-sm">Messaging Privacy</label>
-                    <select
-                        name="messaging_privacy"
-                        defaultValue={profile?.messaging_privacy || "anyone"}
-                        className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-bold"
-                    >
-                        <option value="anyone">Allow messages from anyone</option>
-                        <option value="quarry_members">Only users from joined Quarries</option>
-                        <option value="mutuals">Only Mutual Follows</option>
-                    </select>
-                    <p className="text-xs text-muted-foreground mt-2 font-bold">Mutual follows will always override these blocks.</p>
-                </div>
+                <form action={saveSettings} className="mt-8 space-y-8">
+                    <div>
+                        <label className="mb-2 block text-sm font-semibold">Bio</label>
+                        <textarea
+                            name="bio"
+                            rows={5}
+                            defaultValue={profile?.bio || ""}
+                            className="w-full rounded-3xl border border-border bg-card px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500"
+                            placeholder="Tell the community about yourself..."
+                        />
+                    </div>
 
-                <button type="submit" className="px-8 py-3 bg-black text-white dark:bg-white dark:text-black font-black uppercase border-2 border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all w-full">
-                    Save Changes
-                </button>
-            </form>
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <div>
+                            <label className="mb-2 block text-sm font-semibold">Profile Visibility</label>
+                            <select
+                                name="profile_visibility"
+                                defaultValue={profile?.profile_visibility || "public"}
+                                className="w-full rounded-2xl border border-border bg-card px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500"
+                            >
+                                <option value="public">Public</option>
+                                <option value="authenticated">Anyone with an account</option>
+                                <option value="private">Only me</option>
+                            </select>
+                            <p className="mt-2 text-xs text-muted-foreground">Private profiles stay visible to you, but not to other users.</p>
+                        </div>
+
+                        <div>
+                            <label className="mb-2 block text-sm font-semibold">Messaging Privacy</label>
+                            <select
+                                name="messaging_privacy"
+                                defaultValue={profile?.messaging_privacy || "anyone"}
+                                className="w-full rounded-2xl border border-border bg-card px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500"
+                            >
+                                <option value="anyone">Allow messages from anyone</option>
+                                <option value="quarry_members">Only users from joined quarries</option>
+                                <option value="mutuals">Only mutual follows</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="mb-2 block text-sm font-semibold">Mention Notifications</label>
+                        <select
+                            name="mention_notifications"
+                            defaultValue={profile?.mention_notifications || "all"}
+                            className="w-full rounded-2xl border border-border bg-card px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500"
+                        >
+                            <option value="all">Notify me whenever I am mentioned</option>
+                            <option value="interacted_only">Only notify in threads I already interacted with</option>
+                        </select>
+                        <p className="mt-2 text-xs text-muted-foreground">This keeps direct mention spam down without hiding activity inside discussions you are already part of.</p>
+                    </div>
+
+                    <button type="submit" className="soft-button-primary w-full justify-center rounded-full py-3">
+                        Save Changes
+                    </button>
+                </form>
+            </div>
         </div>
     );
 }

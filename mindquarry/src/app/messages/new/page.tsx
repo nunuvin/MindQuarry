@@ -5,6 +5,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { generateUUID } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { UsersRound } from "lucide-react";
 
 export default async function NewGroupChatPage() {
     const rawHeaders = await headers();
@@ -49,21 +51,31 @@ export default async function NewGroupChatPage() {
     }
 
     return (
-        <div className="max-w-2xl mx-auto mt-12 p-8 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff]">
-            <Link href="/messages" className="text-sm font-bold text-muted-foreground hover:underline mb-4 inline-block">&larr; Back to Inbox</Link>
+        <div className="page-shell max-w-3xl">
+            <div className="soft-panel p-8 sm:p-10">
+                <Link href="/messages" className="text-sm font-semibold text-muted-foreground hover:underline mb-4 inline-block">&larr; Back to Inbox</Link>
 
-            <h1 className="text-2xl font-black mb-6 uppercase border-b-2 border-black dark:border-white pb-2">Create Group Chat</h1>
-
-            <form action={createGroup} className="space-y-6">
-                <div>
-                    <label className="block font-bold mb-2">Group Name</label>
-                    <input name="name" required className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-bold" placeholder="e.g. Server Architecture Planning" />
+                <div className="mb-8">
+                    <p className="font-display text-xs font-semibold uppercase tracking-[0.24em] text-sky-600 dark:text-sky-400">Group Chats</p>
+                    <h1 className="font-display mt-3 text-3xl font-semibold tracking-tight">Create Group Chat</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">Set up a room for planning, moderation, or long-running discussions with the same softer compose pattern as search.</p>
                 </div>
 
-                <button type="submit" className="w-full py-3 font-bold border-[3px] border-black dark:border-white bg-black text-white dark:bg-white dark:text-black hover:bg-transparent hover:text-black dark:hover:bg-transparent dark:hover:text-white transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer uppercase">
-                    Initialize Group
-                </button>
-            </form>
+                <form action={createGroup} className="space-y-6">
+                    <div>
+                        <label className="mb-3 block text-sm font-medium">Group Name</label>
+                        <div className="relative flex items-center overflow-hidden rounded-full border border-border/70 bg-card/85 shadow-sm transition duration-200 focus-within:border-sky-400/70 focus-within:shadow-[0_0_0_4px_rgba(14,165,233,0.12)]">
+                            <UsersRound className="absolute left-4 h-4 w-4 text-muted-foreground" />
+                            <div className="absolute left-10 h-5 w-px bg-border/80" />
+                            <Input name="name" required className="h-12 border-0 bg-transparent pl-14 pr-4 text-sm shadow-none focus-visible:ring-0" placeholder="What do you want to call this group?" />
+                        </div>
+                    </div>
+
+                    <button type="submit" className="soft-button-primary w-full justify-center rounded-full py-3">
+                        Initialize Group
+                    </button>
+                </form>
+            </div>
         </div>
     );
 }

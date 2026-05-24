@@ -1,6 +1,12 @@
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: false,
+    options: "-c search_path=mq_public,mqauth",
+});
+
 // Better Auth tables
 
 interface UserTable {
@@ -66,7 +72,9 @@ interface ProfilesTable {
     replies_provided: number | null;
     replies_accepted: number | null;
     active_bans_count: number | null;
+    profile_visibility: string | null;
     messaging_privacy: string | null;
+    mention_notifications: string | null;
     created_at: Date | null;
     updated_at: Date | null;
 }
@@ -83,6 +91,12 @@ interface NotificationsTable {
     user_id: string | null;
     type: string | null;
     source_id: string | null;
+    actor_user_id: string | null;
+    title: string | null;
+    body: string | null;
+    href: string | null;
+    query_id: string | null;
+    answer_id: string | null;
     is_read: boolean | null;
     created_at: Date | null;
 }
@@ -104,6 +118,15 @@ interface QuarriesTable {
     min_rep_to_reply: number | null;
     custom_ban_template: string | null;
     is_invite_only: boolean | null;
+    visibility: string | null;
+    allow_user_tags: boolean | null;
+    created_at: Date | null;
+}
+
+interface QuerySubscriptionsTable {
+    query_id: string;
+    user_id: string;
+    reason: string | null;
     created_at: Date | null;
 }
 
@@ -170,11 +193,22 @@ interface AnswerVotesTable {
 interface TagsTable {
     id: string;
     name: string | null;
+    description: string | null;
+    quarry_id: string | null;
+    created_by_user_id: string | null;
+    is_default: boolean | null;
+    created_at: Date | null;
 }
 
 interface QueryViewsTable {
     query_id: string;
     views: number | null;
+}
+
+interface QueryViewSessionsTable {
+    query_id: string;
+    viewer_key: string;
+    last_viewed_at: Date | null;
 }
 
 interface QueryTagsTable {
@@ -249,7 +283,9 @@ export interface Database {
     answer_votes: AnswerVotesTable;
     tags: TagsTable;
     query_views: QueryViewsTable;
+    query_view_sessions: QueryViewSessionsTable;
     query_tags: QueryTagsTable;
+    query_subscriptions: QuerySubscriptionsTable;
     conversations: ConversationsTable;
     conversation_participants: ConversationParticipantsTable;
     messages: MessagesTable;
@@ -272,17 +308,14 @@ export interface Database {
 }
 
 const dialect = new PostgresDialect({
-    pool: new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: false,
-    }),
+    pool,
 });
 
 /**
  * Global Kysely database client.
- * Note: Since we use cross-schema setups (mq_auth & mq_public),
+ * Note: Since we use cross-schema setups (mqauth & mq_public),
  * we avoid using .withSchema() which would strictly prefix ALL queries.
- * Instead, schema resolution relies on PostgreSQL's search_path or explicit SQL joins.
+ * Instead, schema resolution relies on the pool's PostgreSQL search_path or explicit SQL joins.
  */
 export const db = new Kysely<Database>({
     dialect,

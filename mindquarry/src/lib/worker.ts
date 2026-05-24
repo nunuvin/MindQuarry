@@ -1,9 +1,12 @@
 import { db } from "./db";
+import { generateUUID } from "./utils";
 
 export async function enqueueJob(jobType: string, payload: unknown) {
     await db.insertInto("background_jobs").values({
+        id: generateUUID(),
         job_type: jobType,
         payload: payload,
+        status: "pending",
     }).execute();
 }
 

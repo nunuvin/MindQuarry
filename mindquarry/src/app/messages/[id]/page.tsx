@@ -2,11 +2,16 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
 import { generateUUID } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { isRateLimited } from "@/lib/rateLimit";
 import { ChatClient } from "./ChatClient";
+import { hasRichTextContent } from "@/lib/utils";
+
+type SendMessageResult = {
+    ok: boolean;
+    error?: string;
+};
 
 export default async function ChatPage({ params }: { params: Promise<{ id: string }> }) {
     const rawHeaders = await headers();
@@ -59,37 +64,51 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
         .where("user_id", "!=", session.user.id)
         .execute();
 
-    async function sendMessage(formData: FormData) {
+    async function sendMessage(formData: FormData): Promise<SendMessageResult> {
         "use server";
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
-        if (!session?.user) return;
+        if (!session?.user) {
+            return { ok: false, error: "You must be signed in to message." };
+        }
 
         const participant = await db.selectFrom("conversation_participants")
             .where("conversation_id", "=", resolvedParams.id)
             .where("user_id", "=", session.user.id)
             .executeTakeFirst();
 
-        if (!participant) return;
+        if (!participant) {
+            return { ok: false, error: "You are no longer part of this conversation." };
+        }
 
         // Rate limit: 20 messages per minute
-        if (isRateLimited(session.user.id, "send_message", 20, 60000)) return;
+        if (isRateLimited(session.user.id, "send_message", 20, 60000)) {
+            return { ok: false, error: "You are sending messages too quickly. Please wait a moment." };
+        }
 
         const body = formData.get("body") as string;
-        if (!body) return;
+        if (!hasRichTextContent(body)) {
+            return { ok: false, error: "Message cannot be empty." };
+        }
 
-        await db.transaction().execute(async (trx) => {
-            await trx.insertInto("messages").values({
-                id: generateUUID(),
-                conversation_id: resolvedParams.id,
-                sender_id: session.user.id,
-                body
-            }).execute();
+        try {
+            await db.transaction().execute(async (trx) => {
+                await trx.insertInto("messages").values({
+                    id: generateUUID(),
+                    conversation_id: resolvedParams.id,
+                    sender_id: session.user.id,
+                    body
+                }).execute();
 
-            await trx.updateTable("conversations").set({ updated_at: new Date() }).where("id", "=", resolvedParams.id).execute();
-        });
+                await trx.updateTable("conversations").set({ updated_at: new Date() }).where("id", "=", resolvedParams.id).execute();
+            });
 
-        revalidatePath(`/messages/${resolvedParams.id}`);
+            revalidatePath(`/messages/${resolvedParams.id}`);
+            return { ok: true };
+        } catch (error) {
+            console.error("Failed to send message", error);
+            return { ok: false, error: "Failed to send message." };
+        }
     }
 
     return (

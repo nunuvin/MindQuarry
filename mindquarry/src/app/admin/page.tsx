@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import Link from "next/link";
 import { getSiteSettings } from "@/lib/settings";
 import { isGlobalAdmin } from "@/lib/admin";
 

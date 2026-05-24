@@ -39,11 +39,24 @@ jest.mock('next/headers', () => ({
 }))
 
 describe('Messaging Inbox', () => {
-  it('renders a list of active conversations', async () => {
+  it('renders the inbox heading', async () => {
     const Component = await MessagesPage()
     render(Component)
+
     expect(screen.getByText('Inbox')).toBeInTheDocument()
+  })
+
+  it('renders the start new chat action', async () => {
+    const Component = await MessagesPage()
+    render(Component)
+
     expect(screen.getByText('Start New Chat')).toBeInTheDocument()
+  })
+
+  it('renders the active conversation entry', async () => {
+    const Component = await MessagesPage()
+    render(Component)
+
     expect(screen.getByText('bobUser')).toBeInTheDocument()
   })
 })

@@ -1,0 +1,26 @@
+[rate_limits]
+window_ms = 60000
+
+[rate_limits.messaging]
+max_new_chats_per_min = 3
+max_messages_per_min = 20
+
+[rate_limits.quarries]
+max_new_quarries_per_min = 2
+max_settings_updates_per_min = 10
+
+[forum]
+max_queries_per_min = 5
+max_replies_per_min = 10
+feed_query_limit = 20
+feed_following_limit = 5
+min_score_visibility = -5
+unique_view_window_ms = 300000
+
+[notifications]
+poll_interval_ms = 60000
+badge_cap = 10
+
+[legal]
+cookie_notice_enabled = true
+cookie_notice_text = "MindQuarry uses essential cookies for sign-in, session security, and saved interface preferences."

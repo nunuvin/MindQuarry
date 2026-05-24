@@ -72,7 +72,6 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
         if (!membership || membership.role !== 'admin') return;
 
-        const id = formData.get("id") as string;
         const targetId = formData.get("target_id") as string;
         const targetType = formData.get("target_type") as string;
 
@@ -162,7 +161,11 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                                     <div className="mb-4">
                                         <h4 className="font-bold text-xs uppercase text-muted-foreground mb-1">Reported User</h4>
                                         <div className="font-bold text-lg">{r.reported_username || r.reported_name}</div>
-                                        <a href={`/users/${r.reported_username}`} target="_blank" className="text-xs text-blue-500 hover:underline">View Profile &rarr;</a>
+                                        {r.reported_username ? (
+                                            <a href={`/users/${r.reported_username}`} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline">View Profile &rarr;</a>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground">Profile link unavailable</span>
+                                        )}
                                     </div>
                                 </div>
                             </div>

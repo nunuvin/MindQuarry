@@ -3,7 +3,7 @@
 This document details the security mitigations put in place across the MindQuarry codebase.
 
 ## 1. Database & Persistence
-- **Schema Separation**: Sensitive user identity info is isolated inside the `mq_auth` schema (maintained by Better-Auth). The primary application runs in the `mq_public` schema. If a SQL vulnerability ever affected a forum route, attackers cannot trivially perform cross-schema joins to access password hashes or sessions.
+- **Schema Separation**: Sensitive user identity info is isolated inside the `mqauth` schema (maintained by Better-Auth). The primary application runs in the `mq_public` schema. If a SQL vulnerability ever affected a forum route, attackers cannot trivially perform cross-schema joins to access password hashes or sessions.
 - **ORM (Kysely)**: All queries are executed using `Kysely`, which translates commands into natively parameterized PostgreSQL queries preventing SQL Injection outright.
 
 ## 2. Authorization (IDOR & RBAC)

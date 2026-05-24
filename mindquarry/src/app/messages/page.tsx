@@ -5,9 +5,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { generateUUID } from "@/lib/utils";
-import { revalidatePath } from "next/cache";
 import { isRateLimited } from "@/lib/rateLimit";
 import { MindQuarryConfig } from "@/lib/config";
+import { Input } from "@/components/ui/input";
+import { MessageSquarePlus, Users } from "lucide-react";
 
 export default async function MessagesPage() {
     const rawHeaders = await headers();
@@ -123,22 +124,32 @@ export default async function MessagesPage() {
     }
 
     return (
-        <div className="max-w-4xl mx-auto mt-8 p-4">
-            <div className="flex justify-between items-center mb-8 border-b-[3px] border-black dark:border-white pb-2">
-                <h1 className="text-3xl font-black uppercase">Inbox</h1>
-                <Link href="/messages/new" className="px-4 py-2 font-bold border-[3px] border-black dark:border-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors cursor-pointer shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
+        <div className="page-shell">
+            <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                    <p className="font-display text-xs font-semibold uppercase tracking-[0.24em] text-sky-600 dark:text-sky-400">Messages</p>
+                    <h1 className="font-display mt-2 text-3xl font-semibold tracking-tight">Inbox</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">Open direct conversations, check read state, and jump back into group planning without the heavy page chrome.</p>
+                </div>
+                <Link href="/messages/new" className="soft-button">
+                    <Users className="mr-2 h-4 w-4" />
                     New Group Chat
                 </Link>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div className="md:col-span-1 space-y-6">
-                    <div className="p-4 bg-muted/30 border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
-                        <h2 className="font-bold uppercase mb-4 text-sm">Start New Chat</h2>
+                    <div className="soft-panel p-5">
+                        <h2 className="font-display mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Start New Chat</h2>
                         <form action={startNewChat} className="space-y-4">
-                            <input name="username" required placeholder="Exact Username..." className="w-full p-2 border-2 border-black dark:border-white bg-card outline-none text-sm" />
-                            <button type="submit" className="w-full py-2 bg-black text-white dark:bg-white dark:text-black font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] cursor-pointer hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all text-sm uppercase">
-                                Message
+                            <div className="relative flex items-center overflow-hidden rounded-full border border-border/70 bg-card/85 shadow-sm transition duration-200 focus-within:border-sky-400/70 focus-within:shadow-[0_0_0_4px_rgba(14,165,233,0.12)]">
+                                <MessageSquarePlus className="absolute left-4 h-4 w-4 text-muted-foreground" />
+                                <div className="absolute left-10 h-5 w-px bg-border/80" />
+                                <Input name="username" required placeholder="Who do you want to chat with?" className="h-12 border-0 bg-transparent pl-14 pr-4 text-sm shadow-none focus-visible:ring-0" />
+                            </div>
+                            <p className="text-sm text-muted-foreground">Use an exact username to open a direct conversation.</p>
+                            <button type="submit" className="soft-button-primary w-full justify-center rounded-full py-3">
+                                Open Conversation
                             </button>
                         </form>
                     </div>
@@ -146,10 +157,10 @@ export default async function MessagesPage() {
 
                 <div className="md:col-span-2 space-y-4">
                     {enrichedConversations.map(conv => (
-                        <Link href={`/messages/${conv.id}`} key={conv.id} className="block p-4 border-[3px] border-black dark:border-white bg-card shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all flex justify-between items-center">
+                        <Link href={`/messages/${conv.id}`} key={conv.id} className="soft-card block p-5 flex justify-between items-center gap-4">
                             <div>
-                                <h3 className="font-black text-lg">{conv.displayName}</h3>
-                                {conv.is_group && <span className="text-xs uppercase bg-black text-white dark:bg-white dark:text-black px-1 font-bold">Group</span>}
+                                <h3 className="font-display text-lg font-semibold tracking-tight">{conv.displayName}</h3>
+                                {conv.is_group && <span className="mt-2 inline-flex rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Group</span>}
                             </div>
                             <span className="text-xs text-muted-foreground font-bold">{conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}</span>
                         </Link>

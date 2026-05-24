@@ -4,7 +4,6 @@ import { generateUUID } from "@/lib/utils";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
 
 export default async function ReportQueryPage({ params }: { params: Promise<{ name: string, id: string }> }) {
     const rawHeaders = await headers();

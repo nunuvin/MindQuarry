@@ -10,7 +10,7 @@
 
 ## Current Emphasis
 
-The most developed part of the codebase today is authentication and session-aware navigation.
+The most developed parts of the codebase today are authentication, feed and query rendering, messaging, and moderation entry points.
 
 Core Q&A product features should be built from here next, using this split:
 

@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "Push-Location": true,
+        "npm run verify": true,
+        "Pop-Location": true,
+        "npx jest": true
+    }
+}

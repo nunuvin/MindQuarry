@@ -39,10 +39,17 @@ jest.mock('next/cache', () => ({
 }))
 
 describe('Admin Dashboard', () => {
-  it('renders admin dashboard for the global admin', async () => {
+  it('renders the global admin panel heading', async () => {
     const Component = await AdminDashboardPage()
     render(Component)
+
     expect(screen.getByText('Global Admin Panel')).toBeInTheDocument()
+  })
+
+  it('renders the simplified mode control', async () => {
+    const Component = await AdminDashboardPage()
+    render(Component)
+
     expect(screen.getByText('Simplified Mode')).toBeInTheDocument()
   })
 })

@@ -1,0 +1,119 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "MindQuarry: Build",
+      "type": "shell",
+      "command": "npm run build",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MindQuarry: Jest",
+      "type": "shell",
+      "command": "npm test -- --runInBand",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MindQuarry: Playwright",
+      "type": "shell",
+      "command": "npm run test:e2e",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MindQuarry: Dev",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MindQuarry: Verify",
+      "type": "shell",
+      "command": "npm run verify",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MindQuarry: Verify then Dev",
+      "type": "shell",
+      "command": "npm run build; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm test -- --runInBand; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm run test:e2e; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry",
+        "shell": {
+          "executable": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "args": [
+            "-NoLogo",
+            "-NoProfile",
+            "-Command"
+          ]
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MindQuarry: Session Cleanup",
+      "type": "shell",
+      "command": "npm run sessions:cleanup",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MindQuarry: Session Cleanup Watch",
+      "type": "shell",
+      "command": "npm run sessions:watch",
+      "options": {
+        "cwd": "${workspaceFolder}/mindquarry"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}

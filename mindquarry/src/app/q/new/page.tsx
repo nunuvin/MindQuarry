@@ -4,6 +4,9 @@ import { getSiteSettings } from "@/lib/settings";
 import { generateUUID } from "@/lib/utils";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { seedQuarryDefaultTags } from "@/lib/tags";
+import { isRateLimited } from "@/lib/rateLimit";
+import { MindQuarryConfig } from "@/lib/config";
 
 export default async function NewQuarryPage() {
     const rawHeaders = await headers();
@@ -23,7 +26,19 @@ export default async function NewQuarryPage() {
 
         const name = formData.get("name") as string;
         const description = formData.get("description") as string;
-        const is_invite_only = formData.get("is_invite_only") === "on";
+        const visibility = (formData.get("visibility") as string) || "public";
+        const is_invite_only = visibility === "members";
+        const allow_user_tags = formData.get("allow_user_tags") === "on";
+
+        if (isRateLimited(
+            session.user.id,
+            "create_quarry",
+            MindQuarryConfig.QUARRIES.MAX_NEW_QUARRIES_PER_MIN,
+            MindQuarryConfig.RATE_LIMIT_WINDOW_MS,
+        )) {
+            console.warn(`User ${session.user.id} rate limited on quarry creation.`);
+            return;
+        }
 
         if (!name || name.includes(" ")) {
             return; // In real app, return form error
@@ -36,6 +51,8 @@ export default async function NewQuarryPage() {
                 name: name.toLowerCase(),
                 description,
                 is_invite_only,
+                visibility,
+                allow_user_tags,
             }).returning(["id", "name"]).executeTakeFirst();
 
             if (quarry) {
@@ -45,6 +62,8 @@ export default async function NewQuarryPage() {
                     user_id: session.user.id,
                     role: 'admin'
                 }).execute();
+
+                await seedQuarryDefaultTags(quarry.id, quarry.name || name.toLowerCase());
 
                 newQuarryName = quarry.name;
             }
@@ -58,26 +77,37 @@ export default async function NewQuarryPage() {
     }
 
     return (
-        <div className="max-w-xl mx-auto mt-12 p-8 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff]">
-            <h1 className="text-2xl font-black mb-6 uppercase border-b-2 border-black dark:border-white pb-2">Create a New Quarry</h1>
-            <form action={createQuarry} className="space-y-6">
-                <div>
-                    <label className="block font-bold mb-2">Quarry Name</label>
-                    <input name="name" required pattern="[a-zA-Z0-9_-]+" title="No spaces allowed" className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. javascript" />
-                    <p className="text-xs text-muted-foreground mt-1">No spaces. Will be accessed via /q/name</p>
-                </div>
-                <div>
-                    <label className="block font-bold mb-2">Description</label>
-                    <textarea name="description" rows={4} className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500" placeholder="What is this community about?"></textarea>
-                </div>
-                <div className="flex items-center gap-3">
-                    <input type="checkbox" id="is_invite_only" name="is_invite_only" className="w-5 h-5 border-2 border-black dark:border-white accent-black dark:accent-white" />
-                    <label htmlFor="is_invite_only" className="font-bold cursor-pointer">Make this Quarry Invite-Only</label>
-                </div>
-                <button type="submit" className="cursor-pointer w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
-                    Create Quarry
-                </button>
-            </form>
+        <div className="page-shell max-w-3xl">
+            <div className="soft-panel p-8 sm:p-10">
+                <h1 className="font-display mb-6 border-b border-border/70 pb-3 text-3xl font-semibold tracking-tight">Create a New Quarry</h1>
+                <form action={createQuarry} className="space-y-6">
+                    <div>
+                        <label className="mb-2 block text-sm font-semibold">Quarry Name</label>
+                        <input name="name" required pattern="[a-zA-Z0-9_-]+" title="No spaces allowed" className="w-full rounded-2xl border border-border px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500" placeholder="e.g. javascript" />
+                        <p className="text-xs text-muted-foreground mt-1">No spaces. Will be accessed via /q/name</p>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-sm font-semibold">Description</label>
+                        <textarea name="description" rows={4} className="w-full rounded-3xl border border-border px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500" placeholder="What is this community about?"></textarea>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-sm font-semibold">Visibility</label>
+                        <select name="visibility" defaultValue="public" className="w-full rounded-2xl border border-border px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500">
+                            <option value="public">Public</option>
+                            <option value="authenticated">Signed-in users only</option>
+                            <option value="members">Members only</option>
+                        </select>
+                        <p className="mt-2 text-xs text-muted-foreground">Members-only quarries behave like invite-only spaces. Public remains the default.</p>
+                    </div>
+                    <label className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3 text-sm font-medium">
+                        <input type="checkbox" name="allow_user_tags" className="h-4 w-4" />
+                        Allow members to create new tags when posting
+                    </label>
+                    <button type="submit" className="soft-button-primary w-full justify-center rounded-full py-3">
+                        Create Quarry
+                    </button>
+                </form>
+            </div>
         </div>
     );
 }

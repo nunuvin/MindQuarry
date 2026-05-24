@@ -2,65 +2,108 @@
 
 import { useState } from "react";
 import { TipTapEditor } from "@/components/TipTapEditor";
+import { hasRichTextContent } from "@/lib/utils";
 
-export function SubmitQueryForm({ submitAction }: { submitAction: (formData: FormData) => Promise<void> }) {
-    const [pendingData, setPendingData] = useState<{ title: string, body: string } | null>(null);
+type SubmitQueryResult = {
+    ok: boolean;
+    error?: string;
+};
 
-    const handleSend = async (formData: FormData, retryData?: { title: string, body: string }) => {
-        const title = retryData?.title || (formData.get("title") as string);
-        const body = retryData?.body || (formData.get("body") as string);
+type SubmitQueryTag = {
+    id: string;
+    name: string | null;
+    description: string | null;
+    quarry_id: string | null;
+};
 
-        if (!title || !body) return;
+export function SubmitQueryForm({
+    submitAction,
+    availableTags = [],
+    allowCustomTags = false,
+}: {
+    submitAction: (formData: FormData) => Promise<SubmitQueryResult | void>;
+    availableTags?: SubmitQueryTag[];
+    allowCustomTags?: boolean;
+}) {
+    const [title, setTitle] = useState("");
+    const [body, setBody] = useState("");
+    const [error, setError] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-        if (!retryData) {
-            setPendingData({ title, body });
+    const handleSend = async (formData: FormData) => {
+        const nextTitle = (formData.get("title") as string)?.trim() || title.trim();
+        const nextBody = (formData.get("body") as string) || body;
+
+        if (!nextTitle || !hasRichTextContent(nextBody)) {
+            setError("Both the title and body are required.");
+            return;
         }
+
+        setError("");
+        setIsSubmitting(true);
 
         try {
             const dataToSubmit = new FormData();
-            dataToSubmit.append("title", title);
-            dataToSubmit.append("body", body);
+            dataToSubmit.append("title", nextTitle);
+            dataToSubmit.append("body", nextBody);
+            for (const tagId of formData.getAll("tag_ids")) {
+                dataToSubmit.append("tag_ids", String(tagId));
+            }
 
-            await submitAction(dataToSubmit);
-            // If it succeeds, it redirects. If not, it falls through or throws.
-        } catch (e) {
-            console.error("Failed to submit query", e);
-            // Stays in pending state to allow retry
+            const customTags = formData.get("custom_tags");
+            if (typeof customTags === "string") {
+                dataToSubmit.append("custom_tags", customTags);
+            }
+
+            const result = await submitAction(dataToSubmit);
+            if (result && !result.ok) {
+                setError(result.error || "Failed to submit query.");
+            }
+        } catch (error) {
+            console.error("Failed to submit query", error);
+            setError("Failed to submit query.");
+        } finally {
+            setIsSubmitting(false);
         }
     };
-
-    if (pendingData) {
-        return (
-            <div className="space-y-6">
-                <div className="p-6 border-[3px] border-red-500 bg-red-100 dark:bg-red-900/30 shadow-[6px_6px_0_0_#ef4444]">
-                    <div className="flex justify-between items-center mb-4 border-b-2 border-red-500/30 pb-2">
-                        <span className="font-black text-red-600 uppercase tracking-tight">Failed to Submit (Offline/Error)</span>
-                        <div className="flex gap-4">
-                            <button onClick={() => setPendingData(null)} className="font-bold text-red-500 hover:underline uppercase text-sm">Discard</button>
-                            <button onClick={() => handleSend(new FormData(), pendingData)} className="font-black text-blue-500 hover:underline uppercase text-sm flex items-center gap-1">
-                                <span className="text-lg leading-none">↻</span> Retry
-                            </button>
-                        </div>
-                    </div>
-                    <div className="font-bold text-xl mb-2">{pendingData.title}</div>
-                    <div className="text-sm line-clamp-3 text-muted-foreground" dangerouslySetInnerHTML={{ __html: pendingData.body }} />
-                </div>
-            </div>
-        );
-    }
 
     return (
         <form action={handleSend} className="space-y-6">
             <div>
-                <label className="block font-bold mb-2">Title</label>
-                <input name="title" required className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-bold" placeholder="What is your question?" />
+                <label htmlFor="submit-query-title" className="block font-bold mb-2">Title</label>
+                <input id="submit-query-title" name="title" required value={title} onChange={(event) => setTitle(event.target.value)} className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-bold" placeholder="What is your question?" />
             </div>
             <div>
                 <label className="block font-bold mb-2">Body</label>
-                <TipTapEditor name="body" />
+                <TipTapEditor name="body" value={body} onChange={setBody} placeholder="Add the details people need to answer well..." />
             </div>
-            <button type="submit" className="cursor-pointer w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
-                Post Query
+            {availableTags.length > 0 && (
+                <div className="space-y-3">
+                    <div>
+                        <label className="block font-bold mb-2">Tags</label>
+                        <p className="text-sm text-muted-foreground">Choose from the instance defaults and the tags available in this quarry.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {availableTags.map((tag) => (
+                            <label key={tag.id} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-black bg-card px-3 py-2 text-sm font-semibold dark:border-white">
+                                <input type="checkbox" name="tag_ids" value={tag.id} className="h-4 w-4" />
+                                <span>{tag.name}</span>
+                                {tag.quarry_id && <span className="text-[10px] uppercase tracking-[0.14em] text-sky-600">Quarry</span>}
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {allowCustomTags && (
+                <div>
+                    <label htmlFor="submit-query-custom-tags" className="block font-bold mb-2">Custom Tags</label>
+                    <input id="submit-query-custom-tags" name="custom_tags" className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-medium" placeholder="comma-separated, e.g. ranking, indexing, moderation" />
+                    <p className="mt-2 text-xs text-muted-foreground">Custom tags are added to this quarry if they do not already exist.</p>
+                </div>
+            )}
+            {error && <p className="text-sm font-bold text-red-500">{error}</p>}
+            <button type="submit" disabled={isSubmitting} className="cursor-pointer w-full py-3 font-bold border-[3px] border-black dark:border-white bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] disabled:cursor-not-allowed disabled:opacity-60">
+                {isSubmitting ? "Posting..." : "Post Query"}
             </button>
         </form>
     );
