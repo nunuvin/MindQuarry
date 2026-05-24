@@ -4,14 +4,28 @@ window_ms = 60000
 [rate_limits.messaging]
 max_new_chats_per_min = 3
 max_messages_per_min = 20
+max_message_deletes_per_min = 20
 
 [rate_limits.quarries]
 max_new_quarries_per_min = 2
 max_settings_updates_per_min = 10
 
+[search]
+initial_users_limit = 5
+initial_quarries_limit = 5
+initial_queries_limit = 100
+fetch_users_limit = 5
+fetch_quarries_limit = 5
+fetch_queries_limit = 100
+max_initial_requests_per_min = 30
+max_follow_up_requests_per_min = 120
+
 [forum]
 max_queries_per_min = 5
 max_replies_per_min = 10
+max_query_edits_per_min = 10
+max_answer_edits_per_min = 15
+max_answer_deletes_per_min = 15
 feed_query_limit = 20
 feed_following_limit = 5
 min_score_visibility = -5

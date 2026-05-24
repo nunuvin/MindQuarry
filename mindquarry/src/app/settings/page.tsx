@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
+import { deleteUserAccount } from "@/lib/accounts";
 import { db } from "@/lib/db";
 
 export default async function UserSettingsPage() {
@@ -48,6 +49,24 @@ export default async function UserSettingsPage() {
         if (session.user.username) {
             revalidatePath(`/users/${session.user.username}`);
         }
+    }
+
+    async function deleteAccount() {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) return;
+
+        const result = await deleteUserAccount({
+            actorUserId: session.user.id,
+            targetUserId: session.user.id,
+        });
+
+        if (!result.ok) {
+            return;
+        }
+
+        redirect("/login");
     }
 
     return (
@@ -123,6 +142,16 @@ export default async function UserSettingsPage() {
                         Save Changes
                     </button>
                 </form>
+
+                <div className="mt-10 rounded-[24px] border border-red-500/30 bg-red-500/5 p-6">
+                    <h2 className="font-display text-xl font-semibold tracking-tight text-red-600">Delete Account</h2>
+                    <p className="mt-3 text-sm leading-7 text-muted-foreground">Deleting your account removes your login and profile data. Existing queries, answers, and direct messages are preserved under the deleted-user placeholder.</p>
+                    <form action={deleteAccount} className="mt-4">
+                        <button type="submit" className="rounded-full border border-red-500 px-5 py-3 text-sm font-semibold text-red-600 hover:bg-red-500 hover:text-white">
+                            Delete My Account
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     );

@@ -87,3 +87,30 @@ CREATE INDEX IF NOT EXISTS idx_mqauth_session_expires_at ON mqauth."session"("ex
 CREATE INDEX IF NOT EXISTS idx_mqauth_account_user_id ON mqauth."account"("userId");
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mqauth_account_provider_account ON mqauth."account"("providerId", "accountId");
 CREATE INDEX IF NOT EXISTS idx_mqauth_verification_identifier ON mqauth."verification"("identifier");
+
+INSERT INTO mqauth."user" (
+    "id",
+    "name",
+    "email",
+    "emailVerified",
+    "image",
+    "username",
+    "displayUsername",
+    "role",
+    "banned"
+)
+SELECT
+    '-1',
+    'Deleted User',
+    'deleted-user@mindquarry.local',
+    true,
+    NULL,
+    'deleted-user',
+    'Deleted User',
+    'system',
+    true
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM mqauth."user"
+    WHERE "id" = '-1'
+);

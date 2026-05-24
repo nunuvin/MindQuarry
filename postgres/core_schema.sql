@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS mq_public.quarries (
     is_invite_only BOOLEAN DEFAULT false,
     visibility VARCHAR(50) DEFAULT 'public',
     allow_user_tags BOOLEAN DEFAULT false,
+    content_review_mode VARCHAR(50) DEFAULT 'none',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -92,6 +93,14 @@ CREATE TABLE IF NOT EXISTS mq_public.queries (
     accepted_answer_id UUID,
     is_hidden BOOLEAN DEFAULT false,
     hidden_at TIMESTAMPTZ,
+    hidden_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
+    validation_status VARCHAR(50) DEFAULT 'approved',
+    validation_note TEXT,
+    validated_at TIMESTAMPTZ,
+    validated_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
+    is_archived BOOLEAN DEFAULT false,
+    archived_at TIMESTAMPTZ,
+    archived_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -113,6 +122,11 @@ CREATE TABLE IF NOT EXISTS mq_public.answers (
     score INTEGER DEFAULT 0,
     is_hidden BOOLEAN DEFAULT false,
     hidden_at TIMESTAMPTZ,
+    hidden_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
+    validation_status VARCHAR(50) DEFAULT 'approved',
+    validation_note TEXT,
+    validated_at TIMESTAMPTZ,
+    validated_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -191,8 +205,29 @@ CREATE TABLE IF NOT EXISTS mq_public.messages (
     conversation_id UUID REFERENCES mq_public.conversations(id) ON DELETE CASCADE,
     sender_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
     body TEXT,
+    is_hidden BOOLEAN DEFAULT false,
+    hidden_at TIMESTAMPTZ,
+    hidden_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS mq_public.posting_policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quarry_id UUID REFERENCES mq_public.quarries(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE CASCADE,
+    review_mode VARCHAR(50) DEFAULT 'none',
+    can_post_queries BOOLEAN DEFAULT true,
+    can_post_answers BOOLEAN DEFAULT true,
+    created_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
+    updated_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_posting_policies_instance_default_unique ON mq_public.posting_policies((1)) WHERE quarry_id IS NULL AND user_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_posting_policies_quarry_default_unique ON mq_public.posting_policies(quarry_id) WHERE quarry_id IS NOT NULL AND user_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_posting_policies_instance_user_unique ON mq_public.posting_policies(user_id) WHERE quarry_id IS NULL AND user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_posting_policies_quarry_user_unique ON mq_public.posting_policies(quarry_id, user_id) WHERE quarry_id IS NOT NULL AND user_id IS NOT NULL;
 
 -- Notify trigger for new messages
 CREATE OR REPLACE FUNCTION mq_public.notify_new_message() RETURNS TRIGGER AS $$
@@ -307,3 +342,4 @@ WHERE NOT EXISTS (
 COMMENT ON TABLE mq_public.profiles IS 'Extended user profiles bridging to Better Auth identities';
 COMMENT ON TABLE mq_public.queries IS 'Top-level questions/posts submitted by users to Quarries';
 COMMENT ON TABLE mq_public.answers IS 'Replies to queries or nested answers (Reddit-style)';
+COMMENT ON TABLE mq_public.posting_policies IS 'Instance-wide or quarry-scoped review and posting overrides, optionally targeting a specific user.';

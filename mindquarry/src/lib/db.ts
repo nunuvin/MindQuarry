@@ -120,6 +120,7 @@ interface QuarriesTable {
     is_invite_only: boolean | null;
     visibility: string | null;
     allow_user_tags: boolean | null;
+    content_review_mode: string | null;
     created_at: Date | null;
 }
 
@@ -159,6 +160,14 @@ interface QueriesTable {
     accepted_answer_id: string | null;
     is_hidden: boolean | null;
     hidden_at: Date | null;
+    hidden_by_id: string | null;
+    validation_status: string | null;
+    validation_note: string | null;
+    validated_at: Date | null;
+    validated_by_id: string | null;
+    is_archived: boolean | null;
+    archived_at: Date | null;
+    archived_by_id: string | null;
     created_at: Date | null;
     updated_at: Date | null;
 }
@@ -172,6 +181,11 @@ interface AnswersTable {
     score: number | null;
     is_hidden: boolean | null;
     hidden_at: Date | null;
+    hidden_by_id: string | null;
+    validation_status: string | null;
+    validation_note: string | null;
+    validated_at: Date | null;
+    validated_by_id: string | null;
     created_at: Date | null;
     updated_at: Date | null;
 }
@@ -237,7 +251,23 @@ interface MessagesTable {
     conversation_id: string | null;
     sender_id: string | null;
     body: string | null;
+    is_hidden: boolean | null;
+    hidden_at: Date | null;
+    hidden_by_id: string | null;
     created_at: Date | null;
+}
+
+interface PostingPoliciesTable {
+    id: string;
+    quarry_id: string | null;
+    user_id: string | null;
+    review_mode: string | null;
+    can_post_queries: boolean | null;
+    can_post_answers: boolean | null;
+    created_by_id: string | null;
+    updated_by_id: string | null;
+    created_at: Date | null;
+    updated_at: Date | null;
 }
 
 interface UserReportsTable {
@@ -291,6 +321,7 @@ export interface Database {
     messages: MessagesTable;
     user_reports: UserReportsTable;
     mod_actions: ModActionsTable;
+    posting_policies: PostingPoliciesTable;
     global_admins: {
         user_id: string;
         granted_by_id: string | null;

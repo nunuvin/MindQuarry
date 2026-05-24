@@ -245,6 +245,22 @@ export async function assignTagsToQuery(options: {
     return uniqueTagIds;
 }
 
+export async function replaceTagsForQuery(options: {
+    queryId: string;
+    quarryId: string;
+    quarryName: string;
+    selectedTagIds: string[];
+    customTagInput?: string;
+    userId: string;
+    allowUserTags?: boolean;
+}) {
+    await db.deleteFrom("query_tags")
+        .where("query_id", "=", options.queryId)
+        .execute();
+
+    return assignTagsToQuery(options);
+}
+
 export async function getQueryTagMap(queryIds: string[]) {
     const tagMap = new Map<string, TagRecord[]>();
 

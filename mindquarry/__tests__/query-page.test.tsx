@@ -48,6 +48,9 @@ const answersChain = createChain([
 const getQueryTagMap = jest.fn().mockResolvedValue(new Map([
   ['query-1', [{ id: 'tag-1', name: 'testing', quarry_id: null }]],
 ]))
+const getAvailableTagsForQuarry = jest.fn().mockResolvedValue([
+  { id: 'tag-1', name: 'testing', description: 'Testing topics', quarry_id: null },
+])
 
 jest.mock('@/lib/db', () => ({
   db: {
@@ -100,6 +103,8 @@ jest.mock('@/components/TipTapRenderer', () => ({
 
 jest.mock('@/lib/tags', () => ({
   getQueryTagMap: (...args: unknown[]) => getQueryTagMap(...args),
+  getAvailableTagsForQuarry: (...args: unknown[]) => getAvailableTagsForQuarry(...args),
+  replaceTagsForQuery: jest.fn(),
 }))
 
 jest.mock('@/app/q/[name]/query/[id]/CopyLinkButton', () => ({
@@ -152,6 +157,6 @@ describe('Query discussion page', () => {
 
     render(Component)
 
-    expect(screen.getByText('testing')).toBeInTheDocument()
+    expect(screen.getAllByText('testing').length).toBeGreaterThanOrEqual(1)
   })
 })

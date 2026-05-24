@@ -7,8 +7,21 @@ import { revalidatePath } from "next/cache";
 import { isRateLimited } from "@/lib/rateLimit";
 import { ChatClient } from "./ChatClient";
 import { hasRichTextContent } from "@/lib/utils";
+import { MindQuarryConfig } from "@/lib/config";
+import { deleteMessageBySender, hideMessage } from "@/lib/content";
+import { isGlobalAdmin } from "@/lib/admin";
 
 type SendMessageResult = {
+    ok: boolean;
+    error?: string;
+};
+
+type DeleteMessageResult = {
+    ok: boolean;
+    error?: string;
+};
+
+type HideMessageResult = {
     ok: boolean;
     error?: string;
 };
@@ -22,6 +35,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
     }
 
     const resolvedParams = await params;
+    const isAdmin = await isGlobalAdmin(session.user.id);
 
     const participant = await db.selectFrom("conversation_participants")
         .where("conversation_id", "=", resolvedParams.id)
@@ -51,7 +65,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
     const messages = await db.selectFrom("messages")
         .leftJoin("user", "user.id", "messages.sender_id")
         .select([
-            "messages.id", "messages.body", "messages.created_at", "messages.sender_id",
+            "messages.id", "messages.body", "messages.created_at", "messages.sender_id", "messages.is_hidden",
             "user.name", "user.displayUsername", "user.username"
         ])
         .where("conversation_id", "=", resolvedParams.id)
@@ -81,8 +95,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
             return { ok: false, error: "You are no longer part of this conversation." };
         }
 
-        // Rate limit: 20 messages per minute
-        if (isRateLimited(session.user.id, "send_message", 20, 60000)) {
+        if (isRateLimited(session.user.id, "send_message", MindQuarryConfig.MESSAGING.MAX_MESSAGES_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
             return { ok: false, error: "You are sending messages too quickly. Please wait a moment." };
         }
 
@@ -111,13 +124,74 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
         }
     }
 
+    async function deleteMessage(formData: FormData): Promise<DeleteMessageResult> {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) {
+            return { ok: false, error: "You must be signed in to delete messages." };
+        }
+
+        const messageId = formData.get("message_id") as string;
+        if (!messageId) {
+            return { ok: false, error: "Missing message." };
+        }
+
+        if (isRateLimited(session.user.id, "delete_message", MindQuarryConfig.MESSAGING.MAX_MESSAGE_DELETES_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
+            return { ok: false, error: "You are deleting messages too quickly. Please wait a moment." };
+        }
+
+        const conversationId = await deleteMessageBySender({
+            messageId,
+            userId: session.user.id,
+            allowModeratorDelete: isAdmin,
+        });
+
+        if (!conversationId) {
+            return { ok: false, error: "Unable to delete that message." };
+        }
+
+        revalidatePath(`/messages/${conversationId}`);
+        revalidatePath("/messages");
+        return { ok: true };
+    }
+
+    async function moderateHideMessage(formData: FormData): Promise<HideMessageResult> {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user || !(await isGlobalAdmin(session.user.id))) {
+            return { ok: false, error: "Only global admins can hide messages." };
+        }
+
+        const messageId = formData.get("message_id") as string;
+        if (!messageId) {
+            return { ok: false, error: "Missing message." };
+        }
+
+        const conversationId = await hideMessage({
+            messageId,
+            actorUserId: session.user.id,
+        });
+
+        if (!conversationId) {
+            return { ok: false, error: "Unable to hide that message." };
+        }
+
+        revalidatePath(`/messages/${conversationId}`);
+        return { ok: true };
+    }
+
     return (
         <ChatClient
             conversationId={resolvedParams.id}
             displayName={displayName}
             messages={messages}
             userId={session.user.id}
+            isGlobalAdmin={isAdmin}
             sendMessageAction={sendMessage}
+            deleteMessageAction={deleteMessage}
+            hideMessageAction={moderateHideMessage}
             otherParticipants={otherParticipants}
         />
     );

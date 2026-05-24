@@ -10,6 +10,7 @@ import { TipTapRenderer } from "@/components/TipTapRenderer";
 import { isRateLimited } from "@/lib/rateLimit";
 import { sql } from "kysely";
 import { SubmitAnswerForm } from "./SubmitAnswerForm";
+import { SubmitQueryForm } from "../../submit/SubmitQueryForm";
 import { hasRichTextContent } from "@/lib/utils";
 import { applyAnswerVote, applyQueryVote } from "@/lib/votes";
 import { VoteControls } from "@/components/vote-controls";
@@ -17,20 +18,34 @@ import { canViewQuarry } from "@/lib/visibility";
 import { notifyMentions, notifyQuerySubscribers, refreshProfileMetrics, subscribeUserToQuery, unsubscribeUserFromQuery } from "@/lib/notifications";
 import { MindQuarryConfig } from "@/lib/config";
 import { recordQueryView } from "@/lib/queryViews";
-import { getQueryTagMap } from "@/lib/tags";
+import { getAvailableTagsForQuarry, getQueryTagMap, replaceTagsForQuery } from "@/lib/tags";
+import { canAdministerQuarry, canModerateQuarry, getEffectivePostingPolicy, shouldReviewAnswer } from "@/lib/moderation";
+import { deleteAnswerByAuthor, deleteQuery, setQueryArchived, updateAnswerByAuthor, updateQueryByAuthor } from "@/lib/content";
 
 type SubmitAnswerResult = {
     ok: boolean;
     error?: string;
 };
 
-export default async function QueryDiscussionPage({ params }: { params: Promise<{ name: string, id: string }> }) {
+type SubmitQueryResult = {
+    ok: boolean;
+    error?: string;
+};
+
+export default async function QueryDiscussionPage({
+    params,
+    searchParams,
+}: {
+    params: Promise<{ name: string, id: string }>;
+    searchParams?: Promise<{ queued?: string }>;
+}) {
     const rawHeaders = await headers();
     const session = await auth.api.getSession({ headers: rawHeaders });
 
     const resolvedParams = await params;
+    const resolvedSearchParams = searchParams ? await searchParams : {};
 
-    const quarry = await db.selectFrom("quarries").select(["id", "name", "is_invite_only", "visibility"]).where("name", "=", resolvedParams.name).executeTakeFirst();
+    const quarry = await db.selectFrom("quarries").select(["id", "name", "is_invite_only", "visibility", "allow_user_tags"]).where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
 
     const membership = session?.user
@@ -40,7 +55,9 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
             .where("user_id", "=", session.user.id)
             .executeTakeFirst()
         : null;
-    const isQuarryAdmin = membership?.role === "admin";
+    const quarryRole = membership?.role || null;
+    const isQuarryAdmin = canAdministerQuarry(quarryRole);
+    const canModerate = canModerateQuarry(quarryRole);
 
     const access = await canViewQuarry(quarry, session?.user?.id);
     if (!access.allowed) {
@@ -71,7 +88,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         .leftJoin("query_views", "query_views.query_id", "queries.id")
         .select((eb) => [
             "queries.id", "queries.title", "queries.body", "queries.score",
-            "queries.accepted_answer_id", "queries.created_at", "queries.user_id as author_id", "user.name", "user.displayUsername", "user.username",
+            "queries.accepted_answer_id", "queries.created_at", "queries.user_id as author_id", "queries.validation_status", "queries.is_archived", "user.name", "user.displayUsername", "user.username",
             eb.fn.coalesce("query_views.views", sql<number>`0`).as("views")
         ])
         .where("queries.id", "=", resolvedParams.id)
@@ -80,8 +97,15 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
 
     if (!query) return notFound();
 
+    if (query.validation_status !== "approved" && !canModerate && session?.user?.id !== query.author_id) {
+        return notFound();
+    }
+
     const queryTagMap = await getQueryTagMap([query.id]);
     const queryTags = queryTagMap.get(query.id) || [];
+    const availableTags = session?.user?.id === query.author_id
+        ? await getAvailableTagsForQuarry(quarry.id, quarry.name || resolvedParams.name)
+        : [];
 
     const answers = await db.selectFrom("answers")
         .leftJoin("user", "user.id", "answers.user_id")
@@ -91,6 +115,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         ])
         .where("query_id", "=", query.id)
         .where("is_hidden", "=", false)
+        .where("answers.validation_status", "=", "approved")
         .orderBy("score", "desc")
         .orderBy("created_at", "asc")
         .execute();
@@ -117,12 +142,27 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
             return { ok: false, error: "You are posting too quickly. Try again in a moment." };
         }
 
+        if (query!.is_archived) {
+            return { ok: false, error: "This thread is archived and no longer accepts answers." };
+        }
+
         const body = formData.get("body") as string;
         const parentId = formData.get("parent_id") as string | null;
 
         if (!hasRichTextContent(body)) {
             return { ok: false, error: "Answer cannot be empty." };
         }
+
+        const postingPolicy = await getEffectivePostingPolicy({
+            quarryId: quarry!.id,
+            userId: session.user.id,
+        });
+
+        if (!postingPolicy.canPostAnswers) {
+            return { ok: false, error: "You are not allowed to post answers in this quarry." };
+        }
+
+        const requiresReview = shouldReviewAnswer(postingPolicy);
 
         try {
             const parentAnswer = parentId
@@ -135,9 +175,10 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                 user_id: session.user.id,
                 body,
                 parent_answer_id: parentId ? parentId : null,
+                validation_status: requiresReview ? "pending" : "approved",
             }).returning("id").executeTakeFirst();
 
-            if (answer) {
+            if (answer && !requiresReview) {
                 const href = `/q/${quarry!.name}/query/${query!.id}#answer-${answer.id}`;
 
                 await subscribeUserToQuery(query!.id, session.user.id, "answer");
@@ -161,6 +202,11 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
             }
 
             await refreshProfileMetrics(session.user.id);
+            if (requiresReview) {
+                revalidatePath(`/q/${quarry!.name}/mod/queue`);
+                redirect(`/q/${quarry!.name}/query/${query!.id}?queued=answer`);
+            }
+
             revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
             return { ok: true };
         } catch (error) {
@@ -190,6 +236,169 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
         }
 
         revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
+    }
+
+    async function editQuery(formData: FormData): Promise<SubmitQueryResult> {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) {
+            redirect("/login");
+        }
+
+        if (session.user.id !== query!.author_id) {
+            return { ok: false, error: "Only the thread author can edit this question." };
+        }
+
+        if (isRateLimited(session.user.id, "edit_query", MindQuarryConfig.FORUM.MAX_QUERY_EDITS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
+            return { ok: false, error: "You are editing too quickly. Please wait a moment." };
+        }
+
+        const title = (formData.get("title") as string || "").trim();
+        const body = formData.get("body") as string;
+        const selectedTagIds = formData.getAll("tag_ids").map((value) => String(value));
+        const customTags = formData.get("custom_tags") as string | null;
+
+        if (!title || !hasRichTextContent(body)) {
+            return { ok: false, error: "Both the title and body are required." };
+        }
+
+        const updated = await updateQueryByAuthor({
+            queryId: query!.id,
+            userId: session.user.id,
+            title,
+            body,
+        });
+
+        if (!updated) {
+            return { ok: false, error: "Unable to update this thread." };
+        }
+
+        await replaceTagsForQuery({
+            queryId: query!.id,
+            quarryId: quarry!.id,
+            quarryName: quarry!.name || resolvedParams.name,
+            selectedTagIds,
+            customTagInput: customTags || "",
+            userId: session.user.id,
+            allowUserTags: Boolean(quarry!.allow_user_tags),
+        });
+
+        revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
+        revalidatePath(`/q/${quarry!.name}`);
+        revalidatePath("/search");
+        return { ok: true };
+    }
+
+    async function deleteQueryAction() {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) {
+            redirect("/login");
+        }
+
+        const result = await deleteQuery({
+            queryId: query!.id,
+            actorUserId: session.user.id,
+            isQuarryAdmin,
+        });
+
+        if (!result.ok) {
+            return;
+        }
+
+        revalidatePath(`/q/${quarry!.name}`);
+        revalidatePath("/search");
+        redirect(`/q/${quarry!.name}`);
+    }
+
+    async function toggleArchiveQuery() {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user || !isQuarryAdmin) {
+            return;
+        }
+
+        const updated = await setQueryArchived({
+            queryId: query!.id,
+            actorUserId: session.user.id,
+            archived: !query!.is_archived,
+        });
+
+        if (!updated) {
+            return;
+        }
+
+        revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
+        revalidatePath(`/q/${quarry!.name}`);
+        revalidatePath("/search");
+    }
+
+    async function editAnswer(formData: FormData): Promise<SubmitAnswerResult> {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) {
+            redirect("/login");
+        }
+
+        if (isRateLimited(session.user.id, "edit_answer", MindQuarryConfig.FORUM.MAX_ANSWER_EDITS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
+            return { ok: false, error: "You are editing too quickly. Please wait a moment." };
+        }
+
+        const answerId = formData.get("answer_id") as string;
+        const body = formData.get("body") as string;
+
+        if (!answerId || !hasRichTextContent(body)) {
+            return { ok: false, error: "Answer cannot be empty." };
+        }
+
+        const updated = await updateAnswerByAuthor({
+            answerId,
+            userId: session.user.id,
+            body,
+        });
+
+        if (!updated) {
+            return { ok: false, error: "Unable to update that answer." };
+        }
+
+        revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
+        revalidatePath("/search");
+        return { ok: true };
+    }
+
+    async function deleteAnswer(formData: FormData) {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) {
+            redirect("/login");
+        }
+
+        if (isRateLimited(session.user.id, "delete_answer", MindQuarryConfig.FORUM.MAX_ANSWER_DELETES_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
+            return;
+        }
+
+        const answerId = formData.get("answer_id") as string;
+        if (!answerId) {
+            return;
+        }
+
+        const deletedQueryId = await deleteAnswerByAuthor({
+            answerId,
+            userId: session.user.id,
+        });
+
+        if (!deletedQueryId) {
+            return;
+        }
+
+        revalidatePath(`/q/${quarry!.name}/query/${query!.id}`);
+        revalidatePath(`/q/${quarry!.name}`);
+        revalidatePath("/search");
     }
 
     async function acceptAnswer(formData: FormData) {
@@ -285,7 +494,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                     </div>
 
                                     <div className="mt-4 flex items-center gap-4 border-t border-border/70 pt-4 text-sm font-semibold">
-                                        {session?.user && (
+                                        {session?.user && !query.is_archived && (
                                             <details className="w-full">
                                                 <summary className="inline-flex cursor-pointer list-none text-sky-600 hover:underline">
                                                     Reply / Quote
@@ -296,6 +505,29 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                                         defaultBody={buildQuotedReply(a.body)}
                                                         submitAction={submitAnswer}
                                                     />
+                                                </div>
+                                            </details>
+                                        )}
+                                        {session?.user?.id === a.author_id && (
+                                            <details className="w-full">
+                                                <summary className="inline-flex cursor-pointer list-none text-sky-600 hover:underline">
+                                                    Edit Answer
+                                                </summary>
+                                                <div className="mt-4 space-y-4">
+                                                    <SubmitAnswerForm
+                                                        defaultBody={a.body || ""}
+                                                        submitAction={editAnswer}
+                                                        hiddenFields={{ answer_id: a.id }}
+                                                        submitLabel="Save Answer"
+                                                        submittingLabel="Saving..."
+                                                        resetOnSuccess={false}
+                                                    />
+                                                    <form action={deleteAnswer}>
+                                                        <input type="hidden" name="answer_id" value={a.id} />
+                                                        <button type="submit" className="text-xs font-bold uppercase tracking-[0.16em] text-red-500 hover:underline">
+                                                            Delete Answer
+                                                        </button>
+                                                    </form>
                                                 </div>
                                             </details>
                                         )}
@@ -342,6 +574,10 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                 </div>
                 <div className="flex-1 peer-checked:opacity-100">
                     <h1 className="font-display text-3xl font-semibold tracking-tight text-balance">{query.title}</h1>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {query.is_archived && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">Archived</span>}
+                        {query.validation_status !== "approved" && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">Pending Review</span>}
+                    </div>
                     {queryTags.length > 0 && (
                         <div className="mt-4 flex flex-wrap gap-2">
                             {queryTags.map((tag) => (
@@ -361,10 +597,47 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
                                     </button>
                                 </form>
                             )}
-                            {isQuarryAdmin && <Link href={`/q/${quarry.name}/mod/queue`} className="text-sky-600 hover:underline">Mod Queue</Link>}
+                            {session?.user?.id === query.author_id && (
+                                <details>
+                                    <summary className="cursor-pointer text-sky-600 hover:underline">Edit Question</summary>
+                                    <div className="mt-4 w-full max-w-3xl rounded-[20px] border border-border/70 bg-card p-5">
+                                        <SubmitQueryForm
+                                            submitAction={editQuery}
+                                            availableTags={availableTags}
+                                            allowCustomTags={Boolean(quarry.allow_user_tags)}
+                                            initialTitle={query.title || ""}
+                                            initialBody={query.body || ""}
+                                            selectedTagIds={queryTags.map((tag) => tag.id)}
+                                            submitLabel="Save Question"
+                                            submittingLabel="Saving..."
+                                        />
+                                    </div>
+                                </details>
+                            )}
+                            {(session?.user?.id === query.author_id || isQuarryAdmin) && (
+                                <form action={deleteQueryAction}>
+                                    <button type="submit" className="text-red-500 hover:underline">Delete Query</button>
+                                </form>
+                            )}
+                            {isQuarryAdmin && (
+                                <form action={toggleArchiveQuery}>
+                                    <button type="submit" className="text-amber-600 hover:underline">{query.is_archived ? "Unarchive" : "Archive"}</button>
+                                </form>
+                            )}
+                            {canModerate && <Link href={`/q/${quarry.name}/mod/queue`} className="text-sky-600 hover:underline">Mod Queue</Link>}
                             <Link href={`/q/${quarry.name}/query/${query.id}/report`} className="text-red-500 hover:underline">Report</Link>
                         </div>
                     </div>
+                    {resolvedSearchParams.queued === "answer" && (
+                        <div className="mb-4 rounded-[20px] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                            Your answer was submitted for moderator review.
+                        </div>
+                    )}
+                    {query.is_archived && (
+                        <div className="mb-4 rounded-[20px] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                            This thread is archived. New answers are disabled.
+                        </div>
+                    )}
                     <div className="text-lg">
                         <TipTapRenderer content={query.body || ""} />
                     </div>
@@ -375,7 +648,7 @@ export default async function QueryDiscussionPage({ params }: { params: Promise<
 
             {renderAnswers()}
 
-            {session?.user && (
+            {session?.user && !query.is_archived && (
                 <div className="soft-panel mt-12 p-6 sm:p-8">
                     <h3 className="font-display mb-4 text-2xl font-semibold tracking-tight">Your Answer</h3>
                     <SubmitAnswerForm submitAction={submitAnswer} />

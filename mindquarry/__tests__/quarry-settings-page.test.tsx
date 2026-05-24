@@ -25,7 +25,10 @@ const quarryChain = createChain({
 })
 
 const membershipChain = createChain({ role: 'admin' })
+const postingPoliciesChain = createChain([], ['leftJoin', 'select', 'where', 'orderBy'])
 const getAvailableTagsForQuarry = jest.fn()
+
+postingPoliciesChain.execute = jest.fn().mockResolvedValue([])
 
 jest.mock('@/lib/auth', () => ({
   auth: {
@@ -44,6 +47,7 @@ jest.mock('@/lib/db', () => ({
     selectFrom: jest.fn((table: string) => {
       if (table === 'quarries') return quarryChain
       if (table === 'quarry_members') return membershipChain
+      if (table === 'posting_policies') return postingPoliciesChain
       throw new Error(`Unexpected table ${table}`)
     }),
   },

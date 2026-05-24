@@ -12,12 +12,25 @@ type SendMessageResult = {
     error?: string;
 };
 
+type DeleteMessageResult = {
+    ok: boolean;
+    error?: string;
+};
+
+type HideMessageResult = {
+    ok: boolean;
+    error?: string;
+};
+
 export function ChatClient({
     conversationId,
     displayName,
     messages,
     userId,
+    isGlobalAdmin,
     sendMessageAction,
+    deleteMessageAction,
+    hideMessageAction,
     otherParticipants
 }: {
     conversationId: string;
@@ -27,12 +40,16 @@ export function ChatClient({
         body: string | null;
         created_at: Date | null;
         sender_id: string | null;
+        is_hidden?: boolean | null;
         name: string | null;
         displayUsername: string | null;
         username: string | null;
     }[];
     userId: string;
+    isGlobalAdmin: boolean;
     sendMessageAction: (formData: FormData) => Promise<SendMessageResult>;
+    deleteMessageAction: (formData: FormData) => Promise<DeleteMessageResult>;
+    hideMessageAction: (formData: FormData) => Promise<HideMessageResult>;
     otherParticipants: { user_id: string, last_read_at: Date | null }[];
 }) {
     const router = useRouter();
@@ -43,6 +60,8 @@ export function ChatClient({
     const [composerBody, setComposerBody] = useState("");
     const [sendError, setSendError] = useState("");
     const [isSending, setIsSending] = useState(false);
+    const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+    const [hidingMessageId, setHidingMessageId] = useState<string | null>(null);
 
     const upsertPendingMessage = (id: string, body: string) => {
         setPendingMessages((currentMessages) => {
@@ -84,6 +103,46 @@ export function ChatClient({
             setSendError("Failed to send message.");
         } finally {
             setIsSending(false);
+        }
+    };
+
+    const handleDeleteMessage = async (messageId: string) => {
+        setSendError("");
+        setDeletingMessageId(messageId);
+
+        try {
+            const formData = new FormData();
+            formData.append("message_id", messageId);
+            const result = await deleteMessageAction(formData);
+
+            if (!result.ok) {
+                setSendError(result.error || "Failed to delete message.");
+            }
+        } catch (error) {
+            console.error("Failed to delete message", error);
+            setSendError("Failed to delete message.");
+        } finally {
+            setDeletingMessageId(null);
+        }
+    };
+
+    const handleHideMessage = async (messageId: string) => {
+        setSendError("");
+        setHidingMessageId(messageId);
+
+        try {
+            const formData = new FormData();
+            formData.append("message_id", messageId);
+            const result = await hideMessageAction(formData);
+
+            if (!result.ok) {
+                setSendError(result.error || "Failed to hide message.");
+            }
+        } catch (error) {
+            console.error("Failed to hide message", error);
+            setSendError("Failed to hide message.");
+        } finally {
+            setHidingMessageId(null);
         }
     };
 
@@ -131,7 +190,29 @@ export function ChatClient({
                                     </span>
                                 </div>
                                 <div className={`max-w-full rounded-[22px] border border-border/70 px-4 py-3 text-sm font-medium shadow-sm ${isMe ? 'bg-sky-500/10' : 'bg-card/80'}`}>
-                                    <TipTapRenderer content={msg.body || ""} />
+                                    {msg.is_hidden ? <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Message hidden by moderation.</span> : <TipTapRenderer content={msg.body || ""} />}
+                                </div>
+                                <div className="mt-2 flex gap-3">
+                                    {(isMe || isGlobalAdmin) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteMessage(msg.id)}
+                                            disabled={deletingMessageId === msg.id}
+                                            className="text-[11px] font-bold uppercase tracking-[0.16em] text-red-500 hover:underline disabled:opacity-60"
+                                        >
+                                            {deletingMessageId === msg.id ? "Deleting..." : "Delete"}
+                                        </button>
+                                    )}
+                                    {isGlobalAdmin && !msg.is_hidden && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleHideMessage(msg.id)}
+                                            disabled={hidingMessageId === msg.id}
+                                            className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-600 hover:underline disabled:opacity-60"
+                                        >
+                                            {hidingMessageId === msg.id ? "Hiding..." : "Hide"}
+                                        </button>
+                                    )}
                                 </div>
                                 {isMe && otherParticipants.some(p => p.last_read_at && msg.created_at && new Date(p.last_read_at) >= new Date(msg.created_at)) && (
                                     <span className="text-[10px] font-bold text-green-600 mt-1 self-end uppercase">Read ✓</span>

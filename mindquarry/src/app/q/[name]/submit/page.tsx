@@ -3,11 +3,14 @@ import { db } from "@/lib/db";
 import { generateUUID } from "@/lib/utils";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { isRateLimited } from "@/lib/rateLimit";
 import { SubmitQueryForm } from "./SubmitQueryForm";
 import { hasRichTextContent } from "@/lib/utils";
 import { canViewQuarry } from "@/lib/visibility";
 import { notifyMentions, refreshProfileMetrics, subscribeUserToQuery } from "@/lib/notifications";
+import { MindQuarryConfig } from "@/lib/config";
+import { getEffectivePostingPolicy, shouldReviewQuery } from "@/lib/moderation";
 import { assignTagsToQuery, getAvailableTagsForQuarry } from "@/lib/tags";
 
 type SubmitQueryResult = {
@@ -40,8 +43,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
             return { ok: false, error: "You must be signed in to post." };
         }
 
-        // Rate limit: Max 5 queries per minute
-        if (isRateLimited(session.user.id, "submit_query", 5, 60000)) {
+        if (isRateLimited(session.user.id, "submit_query", MindQuarryConfig.FORUM.MAX_QUERIES_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
             console.warn(`User ${session.user.id} rate limited on query submission.`);
             return { ok: false, error: "You are posting too quickly. Try again in a moment." };
         }
@@ -55,6 +57,17 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
             return { ok: false, error: "Both the title and body are required." };
         }
 
+        const postingPolicy = await getEffectivePostingPolicy({
+            quarryId: quarry!.id,
+            userId: session.user.id,
+        });
+
+        if (!postingPolicy.canPostQueries) {
+            return { ok: false, error: "You are not allowed to post new queries in this quarry." };
+        }
+
+        const requiresReview = shouldReviewQuery(postingPolicy);
+
         let newQueryId: string | null = null;
         try {
             const query = await db.insertInto("queries").values({
@@ -63,6 +76,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
                 user_id: session.user.id,
                 title,
                 body,
+                validation_status: requiresReview ? "pending" : "approved",
             }).returning("id").executeTakeFirst();
 
             if (query) {
@@ -77,13 +91,15 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
                     allowUserTags: quarry!.allow_user_tags ?? false,
                 });
                 await subscribeUserToQuery(query.id, session.user.id, "author");
-                await notifyMentions({
-                    actorUserId: session.user.id,
-                    content: `${title}\n${body}`,
-                    href: `/q/${quarry!.name}/query/${query.id}`,
-                    title: `${session.user.name || "Someone"} mentioned you in a question`,
-                    queryId: query.id,
-                });
+                if (!requiresReview) {
+                    await notifyMentions({
+                        actorUserId: session.user.id,
+                        content: `${title}\n${body}`,
+                        href: `/q/${quarry!.name}/query/${query.id}`,
+                        title: `${session.user.name || "Someone"} mentioned you in a question`,
+                        queryId: query.id,
+                    });
+                }
                 await refreshProfileMetrics(session.user.id);
             }
         } catch (error) {
@@ -92,6 +108,11 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
         }
 
         if (newQueryId) {
+            if (requiresReview) {
+                revalidatePath(`/q/${quarry!.name}/mod/queue`);
+                redirect(`/q/${quarry!.name}?queued=query`);
+            }
+
             redirect(`/q/${quarry!.name}/query/${newQueryId}`);
         }
 

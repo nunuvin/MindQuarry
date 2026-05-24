@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import { canModerateQuarry, upsertPostingPolicy } from "@/lib/moderation";
 
 export default async function QuarryModQueuePage({ params }: { params: Promise<{ name: string }> }) {
     const rawHeaders = await headers();
@@ -14,9 +15,9 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
     const quarry = await db.selectFrom("quarries").selectAll().where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
 
-    // Verify admin
+    // Verify moderator/admin
     const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry.id).where("user_id", "=", session.user.id).executeTakeFirst();
-    if (!membership || membership.role !== 'admin') {
+    if (!membership || !canModerateQuarry(membership.role)) {
         return (
             <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border rounded shadow">
                 <h1 className="text-2xl font-bold text-red-500">Access Denied</h1>
@@ -51,13 +52,52 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
 
     const uniqueReports = Array.from(reportGroups.values());
 
+    const [pendingQueries, pendingAnswers] = await Promise.all([
+        db.selectFrom("queries")
+            .leftJoin("user", "user.id", "queries.user_id")
+            .select([
+                "queries.id",
+                "queries.title",
+                "queries.body",
+                "queries.created_at",
+                "queries.user_id as author_id",
+                "user.name",
+                "user.displayUsername",
+                "user.username",
+            ])
+            .where("queries.quarry_id", "=", quarry.id)
+            .where("queries.validation_status", "=", "pending")
+            .where("queries.is_hidden", "=", false)
+            .orderBy("queries.created_at", "desc")
+            .execute(),
+        db.selectFrom("answers")
+            .innerJoin("queries", "queries.id", "answers.query_id")
+            .leftJoin("user", "user.id", "answers.user_id")
+            .select([
+                "answers.id",
+                "answers.body",
+                "answers.created_at",
+                "answers.user_id as author_id",
+                "queries.id as query_id",
+                "queries.title as query_title",
+                "user.name",
+                "user.displayUsername",
+                "user.username",
+            ])
+            .where("queries.quarry_id", "=", quarry.id)
+            .where("answers.validation_status", "=", "pending")
+            .where("answers.is_hidden", "=", false)
+            .orderBy("answers.created_at", "desc")
+            .execute(),
+    ]);
+
     async function dismissReport(formData: FormData) {
         "use server";
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || membership.role !== 'admin') return;
+        if (!membership || !canModerateQuarry(membership.role)) return;
 
         const id = formData.get("id") as string;
         await db.updateTable("user_reports").set({ status: "dismissed" }).where("id", "=", id).execute();
@@ -70,15 +110,15 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || membership.role !== 'admin') return;
+        if (!membership || !canModerateQuarry(membership.role)) return;
 
         const targetId = formData.get("target_id") as string;
         const targetType = formData.get("target_type") as string;
 
         if (targetType === "query") {
-            await db.updateTable("queries").set({ is_hidden: true, hidden_at: new Date() }).where("id", "=", targetId).execute();
+            await db.updateTable("queries").set({ is_hidden: true, hidden_at: new Date(), hidden_by_id: session.user.id }).where("id", "=", targetId).execute();
         } else if (targetType === "answer") {
-            await db.updateTable("answers").set({ is_hidden: true, hidden_at: new Date() }).where("id", "=", targetId).execute();
+            await db.updateTable("answers").set({ is_hidden: true, hidden_at: new Date(), hidden_by_id: session.user.id }).where("id", "=", targetId).execute();
         }
 
         await db.updateTable("user_reports").set({ status: "actioned" }).where("target_id", "=", targetId).where("target_type", "=", targetType).execute();
@@ -91,13 +131,82 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || membership.role !== 'admin') return;
+        if (!membership || !canModerateQuarry(membership.role)) return;
 
         const targetId = formData.get("target_id") as string;
         const targetType = formData.get("target_type") as string;
 
         await db.updateTable("user_reports").set({ status: "escalated", quarry_id: null }).where("target_id", "=", targetId).where("target_type", "=", targetType).execute();
         revalidatePath(`/q/${quarry!.name}/mod/queue`);
+    }
+
+    async function approvePending(formData: FormData) {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) return;
+        const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
+        if (!membership || !canModerateQuarry(membership.role)) return;
+
+        const targetId = formData.get("target_id") as string;
+        const targetType = formData.get("target_type") as string;
+
+        if (targetType === "query") {
+            await db.updateTable("queries")
+                .set({ validation_status: "approved", validated_at: new Date(), validated_by_id: session.user.id })
+                .where("id", "=", targetId)
+                .execute();
+        } else if (targetType === "answer") {
+            await db.updateTable("answers")
+                .set({ validation_status: "approved", validated_at: new Date(), validated_by_id: session.user.id })
+                .where("id", "=", targetId)
+                .execute();
+        }
+
+        revalidatePath(`/q/${quarry!.name}/mod/queue`);
+        revalidatePath(`/q/${quarry!.name}`);
+    }
+
+    async function applyUserRestriction(formData: FormData) {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) return;
+        const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
+        if (!membership || !canModerateQuarry(membership.role)) return;
+
+        const targetUserId = formData.get("user_id") as string;
+        const preset = formData.get("preset") as string;
+        if (!targetUserId || !preset) return;
+
+        let reviewMode = "none";
+        let canPostQueries = true;
+        let canPostAnswers = true;
+
+        if (preset === "review_all") {
+            reviewMode = "query_and_answer";
+        }
+
+        if (preset === "silence_answers") {
+            canPostAnswers = false;
+        }
+
+        if (preset === "silence_all") {
+            canPostQueries = false;
+            canPostAnswers = false;
+        }
+
+        await upsertPostingPolicy({
+            actorUserId: session.user.id,
+            quarryId: quarry!.id,
+            userId: targetUserId,
+            reviewMode,
+            canPostQueries,
+            canPostAnswers,
+        });
+
+        revalidatePath(`/q/${quarry!.name}/mod/queue`);
+        revalidatePath(`/q/${quarry!.name}/settings`);
     }
 
     return (
@@ -111,6 +220,78 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                 </div>
 
                 <div className="space-y-8">
+                    {(pendingQueries.length > 0 || pendingAnswers.length > 0) && (
+                        <section className="space-y-6">
+                            <h2 className="font-black uppercase text-muted-foreground">Pending Review</h2>
+
+                            {pendingQueries.map((pendingQuery) => (
+                                <div key={pendingQuery.id} className="grid grid-cols-1 gap-6 border-[3px] border-amber-500/40 bg-amber-500/5 p-4">
+                                    <div>
+                                        <div className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Query awaiting approval</div>
+                                        <h3 className="text-lg font-bold">{pendingQuery.title}</h3>
+                                        <p className="mt-2 text-sm text-muted-foreground">By {pendingQuery.displayUsername || pendingQuery.username || pendingQuery.name}</p>
+                                        <div className="mt-4 whitespace-pre-wrap text-sm text-muted-foreground">{pendingQuery.body}</div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-3 text-sm font-semibold">
+                                        <form action={approvePending}>
+                                            <input type="hidden" name="target_id" value={pendingQuery.id} />
+                                            <input type="hidden" name="target_type" value="query" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white">Approve</button>
+                                        </form>
+                                        <form action={hideItem}>
+                                            <input type="hidden" name="target_id" value={pendingQuery.id} />
+                                            <input type="hidden" name="target_type" value="query" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white">Hide</button>
+                                        </form>
+                                        <form action={applyUserRestriction}>
+                                            <input type="hidden" name="user_id" value={pendingQuery.author_id || ""} />
+                                            <input type="hidden" name="preset" value="review_all" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-amber-600 text-amber-700 hover:bg-amber-600 hover:text-white">Require Review</button>
+                                        </form>
+                                        <form action={applyUserRestriction}>
+                                            <input type="hidden" name="user_id" value={pendingQuery.author_id || ""} />
+                                            <input type="hidden" name="preset" value="silence_all" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-black dark:border-white">Silence User</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {pendingAnswers.map((pendingAnswer) => (
+                                <div key={pendingAnswer.id} className="grid grid-cols-1 gap-6 border-[3px] border-amber-500/40 bg-amber-500/5 p-4">
+                                    <div>
+                                        <div className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Answer awaiting approval</div>
+                                        <div className="text-sm font-semibold text-muted-foreground">Thread: {pendingAnswer.query_title}</div>
+                                        <p className="mt-2 text-sm text-muted-foreground">By {pendingAnswer.displayUsername || pendingAnswer.username || pendingAnswer.name}</p>
+                                        <div className="mt-4 whitespace-pre-wrap text-sm text-muted-foreground">{pendingAnswer.body}</div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-3 text-sm font-semibold">
+                                        <form action={approvePending}>
+                                            <input type="hidden" name="target_id" value={pendingAnswer.id} />
+                                            <input type="hidden" name="target_type" value="answer" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white">Approve</button>
+                                        </form>
+                                        <form action={hideItem}>
+                                            <input type="hidden" name="target_id" value={pendingAnswer.id} />
+                                            <input type="hidden" name="target_type" value="answer" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white">Hide</button>
+                                        </form>
+                                        <form action={applyUserRestriction}>
+                                            <input type="hidden" name="user_id" value={pendingAnswer.author_id || ""} />
+                                            <input type="hidden" name="preset" value="review_all" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-amber-600 text-amber-700 hover:bg-amber-600 hover:text-white">Require Review</button>
+                                        </form>
+                                        <form action={applyUserRestriction}>
+                                            <input type="hidden" name="user_id" value={pendingAnswer.author_id || ""} />
+                                            <input type="hidden" name="preset" value="silence_answers" />
+                                            <button type="submit" className="px-4 py-2 border-2 border-black dark:border-white">Silence Answers</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            ))}
+                        </section>
+                    )}
+
                     {uniqueReports.map(group => {
                         const r = group[0];
                         const repeatCount = group.length;
@@ -154,6 +335,20 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                                                 Escalate to Global
                                             </button>
                                         </form>
+                                        <form action={applyUserRestriction}>
+                                            <input type="hidden" name="user_id" value={r.reported_id || ''} />
+                                            <input type="hidden" name="preset" value="review_all" />
+                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-amber-600 text-amber-700 hover:bg-amber-600 hover:text-white">
+                                                Require Review
+                                            </button>
+                                        </form>
+                                        <form action={applyUserRestriction}>
+                                            <input type="hidden" name="user_id" value={r.reported_id || ''} />
+                                            <input type="hidden" name="preset" value="silence_all" />
+                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-black dark:border-white">
+                                                Silence User
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
 
@@ -172,7 +367,7 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                         );
                     })}
 
-                    {uniqueReports.length === 0 && (
+                    {uniqueReports.length === 0 && pendingQueries.length === 0 && pendingAnswers.length === 0 && (
                         <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
                             The moderation queue is empty.
                         </div>
