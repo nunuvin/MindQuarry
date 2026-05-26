@@ -11,10 +11,12 @@ import type { QuarryNavigationOption } from "@/lib/quarries";
 export default function Navbar({
     notificationBadgeCap,
     notificationPollIntervalMs,
+    isGlobalAdmin = false,
     quarryRoles = [],
 }: {
     notificationBadgeCap: number;
     notificationPollIntervalMs: number;
+    isGlobalAdmin?: boolean;
     quarryRoles?: QuarryNavigationOption[];
 }) {
     const { data: session } = authClient.useSession();
@@ -35,6 +37,8 @@ export default function Navbar({
         }
 
         let cancelled = false;
+        let intervalId: number | null = null;
+        let eventSource: EventSource | null = null;
 
         const loadCount = async () => {
             try {
@@ -55,13 +59,32 @@ export default function Navbar({
         };
 
         loadCount();
-        const intervalId = window.setInterval(loadCount, notificationPollIntervalMs);
+
+        if (typeof window.EventSource === "function") {
+            eventSource = new window.EventSource("/api/notifications/stream");
+            eventSource.onmessage = (event) => {
+                try {
+                    const payload = JSON.parse(event.data) as { type?: string; count?: number };
+
+                    if (!cancelled && payload.type === "notifications_updated") {
+                        setNotificationCount(Number(payload.count ?? 0));
+                    }
+                } catch {
+                    // Ignore malformed SSE payloads.
+                }
+            };
+        } else {
+            intervalId = window.setInterval(loadCount, notificationPollIntervalMs);
+        }
 
         return () => {
             cancelled = true;
-            window.clearInterval(intervalId);
+            if (intervalId !== null) {
+                window.clearInterval(intervalId);
+            }
+            eventSource?.close();
         };
-    }, [notificationPollIntervalMs, pathname, user]);
+    }, [notificationPollIntervalMs, user]);
 
     return (
         <nav className="sticky top-0 z-50 border-b border-border/70 bg-background shadow-sm">
@@ -102,7 +125,7 @@ export default function Navbar({
                             )}
                         </Link>
                     )}
-                    <UserMenu user={user} contextRole={currentQuarryRole} />
+                    <UserMenu user={user} contextRole={currentQuarryRole} isGlobalAdmin={isGlobalAdmin} />
                 </div>
             </div>
 

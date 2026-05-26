@@ -32,9 +32,12 @@ export default async function AdminDashboardPage() {
 
     if (!isAdmin) {
         return (
-            <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border rounded shadow">
-                <h1 className="text-2xl font-bold text-red-500">Access Denied</h1>
-                <p>You must be a Global Administrator to view this page.</p>
+            <div className="page-shell">
+                <div className="soft-panel max-w-3xl p-8">
+                    <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-red-500">Instance</p>
+                    <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">Access denied</h1>
+                    <p className="mt-3 text-sm leading-7 text-muted-foreground">You must be a global administrator to open the instance control room.</p>
+                </div>
             </div>
         );
     }
@@ -103,56 +106,85 @@ export default async function AdminDashboardPage() {
     }
 
     return (
-        <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border-[3px] border-black rounded-none shadow-[8px_8px_0_0_#000] dark:border-white dark:shadow-[8px_8px_0_0_#fff]">
-            <h1 className="text-3xl font-black uppercase mb-8 border-b-[3px] border-black dark:border-white pb-2">Global Admin Panel</h1>
+        <div className="page-shell max-w-6xl">
+            <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <p className="font-display text-xs font-semibold uppercase tracking-[0.24em] text-red-500">Instance Admin</p>
+                    <h1 className="font-display mt-3 text-4xl font-semibold tracking-tight">Global Admin Panel</h1>
+                    <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">Tune site-wide behavior, registration, moderation defaults, and report context without the older brutalist shell fighting the sidebar layout.</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="soft-card min-w-[11rem] p-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Registration</div>
+                        <div className="mt-2 text-lg font-semibold text-foreground">{settings?.registration_enabled ? "Open" : "Closed"}</div>
+                    </div>
+                    <div className="soft-card min-w-[11rem] p-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Messaging Mode</div>
+                        <div className="mt-2 text-lg font-semibold text-foreground">{settings?.simplified_mode_enabled ? "Simplified" : "Full"}</div>
+                    </div>
+                    <div className="soft-card min-w-[11rem] p-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Chat Report Context</div>
+                        <div className="mt-2 text-lg font-semibold text-foreground">{settings?.chat_report_context_size || 100} msgs</div>
+                    </div>
+                </div>
+            </div>
 
-            <div className="space-y-8">
-                <section>
-                    <h2 className="text-xl font-bold mb-4">Site Settings</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="p-4 border-[2px] border-black dark:border-white hover:bg-muted transition-colors flex items-center justify-between">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
+                <section className="soft-panel p-6 sm:p-8">
+                    <div className="mb-6 border-b border-border/70 pb-4">
+                        <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-400">Site switches</p>
+                        <h2 className="mt-3 text-2xl font-semibold tracking-tight">Core settings</h2>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="soft-card flex items-center justify-between gap-4 p-5">
                             <div>
-                                <h3 className="font-bold">Simplified Mode</h3>
-                                <p className="text-sm text-muted-foreground">Disables DMs and custom Quarries</p>
+                                <h3 className="text-lg font-semibold">Simplified Mode</h3>
+                                <p className="mt-2 text-sm leading-6 text-muted-foreground">Turns off direct messages and custom quarry creation for a reduced-complexity setup.</p>
                             </div>
                             <form action={toggleSimplifiedMode}>
-                                <button className={`cursor-pointer px-4 py-2 font-bold border-2 border-black dark:border-white ${settings?.simplified_mode_enabled ? 'bg-blue-500 text-white' : 'bg-transparent hover:bg-muted-foreground/10'}`}>
-                                    {settings?.simplified_mode_enabled ? "ON" : "OFF"}
+                                <button className={`inline-flex min-w-28 justify-center rounded-full px-4 py-2 text-sm font-semibold text-white transition ${settings?.simplified_mode_enabled ? 'bg-sky-600 shadow-[0_16px_28px_-18px_rgba(14,116,144,0.75)]' : 'bg-slate-700 shadow-[0_16px_28px_-18px_rgba(51,65,85,0.7)] hover:bg-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white'}`}>
+                                    {settings?.simplified_mode_enabled ? "Enabled" : "Disabled"}
                                 </button>
                             </form>
                         </div>
-                        <div className="p-4 border-[2px] border-black dark:border-white hover:bg-muted transition-colors flex items-center justify-between">
+                        <div className="soft-card flex items-center justify-between gap-4 p-5">
                             <div>
-                                <h3 className="font-bold">Registration</h3>
-                                <p className="text-sm text-muted-foreground">Allow new signups</p>
+                                <h3 className="text-lg font-semibold">Registration</h3>
+                                <p className="mt-2 text-sm leading-6 text-muted-foreground">Control whether new accounts can be created on the instance right now.</p>
                             </div>
                             <form action={toggleRegistration}>
-                                <button className={`cursor-pointer px-4 py-2 font-bold border-2 border-black dark:border-white ${settings?.registration_enabled ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-                                    {settings?.registration_enabled ? "ENABLED" : "DISABLED"}
+                                <button className={`inline-flex min-w-28 justify-center rounded-full px-4 py-2 text-sm font-semibold text-white transition ${settings?.registration_enabled ? 'bg-emerald-600 shadow-[0_16px_28px_-18px_rgba(5,150,105,0.7)]' : 'bg-rose-600 shadow-[0_16px_28px_-18px_rgba(225,29,72,0.7)]'}`}>
+                                    {settings?.registration_enabled ? "Open" : "Closed"}
                                 </button>
                             </form>
                         </div>
                     </div>
                 </section>
 
-                <section>
-                    <h2 className="text-xl font-bold mb-4">Global Ban Template</h2>
+                <section className="soft-panel p-6 sm:p-8">
+                    <div className="mb-6 border-b border-border/70 pb-4">
+                        <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-400">Moderation</p>
+                        <h2 className="mt-3 text-2xl font-semibold tracking-tight">Global ban template</h2>
+                    </div>
                     <form action={updateBanTemplate} className="space-y-4">
                         <textarea
                             name="template"
                             rows={4}
                             defaultValue={settings?.global_ban_template || ""}
                             placeholder="Default message sent to users upon global ban..."
-                            className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                            className="min-h-40 w-full rounded-[24px] border border-border/70 bg-card/80 px-5 py-4 text-sm leading-7 outline-none transition focus:border-sky-400/70 focus:ring-4 focus:ring-sky-500/10"
                         />
-                        <button type="submit" className="px-6 py-2 font-bold border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black cursor-pointer hover:bg-muted-foreground/20 hover:text-black dark:hover:text-white transition-colors">
+                        <button type="submit" className="soft-button-primary rounded-full px-6 py-3">
                             Save Template
                         </button>
                     </form>
                 </section>
 
-                <section>
-                    <h2 className="text-xl font-bold mb-4">Chat Report Context</h2>
+                <section className="soft-panel p-6 sm:p-8">
+                    <div className="mb-6 border-b border-border/70 pb-4">
+                        <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-400">Messaging</p>
+                        <h2 className="mt-3 text-2xl font-semibold tracking-tight">Chat report context</h2>
+                    </div>
                     <form action={updateChatReportContextSize} className="space-y-4">
                         <input
                             type="number"
@@ -160,10 +192,10 @@ export default async function AdminDashboardPage() {
                             max={500}
                             name="chat_report_context_size"
                             defaultValue={settings?.chat_report_context_size || 100}
-                            className="w-full max-w-xs p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                            className="h-12 w-full max-w-xs rounded-2xl border border-border/70 bg-card/80 px-4 text-sm font-medium outline-none transition focus:border-sky-400/70 focus:ring-4 focus:ring-sky-500/10"
                         />
-                        <p className="text-sm text-muted-foreground">How many recent chat messages are attached when a conversation or message is reported to instance admins.</p>
-                        <button type="submit" className="px-6 py-2 font-bold border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black cursor-pointer hover:bg-muted-foreground/20 hover:text-black dark:hover:text-white transition-colors">
+                        <p className="text-sm leading-7 text-muted-foreground">Choose how many recent chat messages are attached when a conversation or single message is reported to instance admins.</p>
+                        <button type="submit" className="soft-button-primary rounded-full px-6 py-3">
                             Save Context Size
                         </button>
                     </form>

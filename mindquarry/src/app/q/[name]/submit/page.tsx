@@ -31,7 +31,15 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
     const quarry = await db.selectFrom("quarries").select(["id", "name", "visibility", "is_invite_only", "allow_user_tags"]).where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
 
-    const availableTags = await getAvailableTagsForQuarry(quarry.id, quarry.name || resolvedParams.name);
+    const [availableTags, followedUsernames] = await Promise.all([
+        getAvailableTagsForQuarry(quarry.id, quarry.name || resolvedParams.name),
+        db.selectFrom("follows")
+            .innerJoin("user", "user.id", "follows.following_id")
+            .select("user.username")
+            .where("follows.follower_id", "=", session.user.id)
+            .orderBy("user.username", "asc")
+            .execute(),
+    ]);
 
     const access = await canViewQuarry(quarry, session.user.id, viewerIsGlobalAdmin);
     if (!access.allowed) {
@@ -126,7 +134,12 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
     return (
         <div className="max-w-2xl mx-auto mt-12 p-8 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff]">
             <h1 className="text-2xl font-black mb-6 uppercase border-b-2 border-black dark:border-white pb-2">Submit Query to q/{quarry.name}</h1>
-            <SubmitQueryForm submitAction={submitQuery} availableTags={availableTags} allowCustomTags={quarry.allow_user_tags ?? false} />
+            <SubmitQueryForm
+                submitAction={submitQuery}
+                availableTags={availableTags}
+                allowCustomTags={quarry.allow_user_tags ?? false}
+                mentionSuggestions={followedUsernames.map((row) => row.username).filter((username): username is string => Boolean(username))}
+            />
         </div>
     );
 }

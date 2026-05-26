@@ -4,6 +4,7 @@ import { ChatClient } from '@/app/messages/[id]/ChatClient'
 import { DELETED_MESSAGE_TOMBSTONE } from '@/lib/messageContent'
 
 const refresh = jest.fn()
+const replace = jest.fn()
 const eventSources: Array<{
   onmessage: ((event: MessageEvent) => void) | null
   close: jest.Mock
@@ -13,6 +14,7 @@ const eventSources: Array<{
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     refresh,
+    replace,
   }),
 }))
 
@@ -42,6 +44,7 @@ jest.mock('@/components/TipTapRenderer', () => ({
 describe('ChatClient', () => {
   beforeEach(() => {
     refresh.mockReset()
+    replace.mockReset()
     eventSources.length = 0
     global.EventSource = class {
       onmessage: ((event: MessageEvent) => void) | null = null
@@ -134,7 +137,7 @@ describe('ChatClient', () => {
       />,
     )
 
-    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter', ctrlKey: true })
 
     expect(await screen.findByText('Message cannot be empty.')).toBeInTheDocument()
     expect(sendMessageAction).not.toHaveBeenCalled()
@@ -158,7 +161,7 @@ describe('ChatClient', () => {
     )
 
     fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: '<p>Hello</p>' } })
-    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter', ctrlKey: true })
 
     expect(await screen.findByText('Temporary failure')).toBeInTheDocument()
     expect(screen.getByText('Failed to send')).toBeInTheDocument()
@@ -191,7 +194,7 @@ describe('ChatClient', () => {
     )
 
     fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: '<p>Hello</p>' } })
-    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter', ctrlKey: true })
     expect(await screen.findByText('Failed to send')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Retry/i }))
@@ -308,5 +311,58 @@ describe('ChatClient', () => {
     )
 
     expect(screen.getByText('Read ✓')).toBeInTheDocument()
+  })
+
+  it('keeps plain Enter for new lines and only sends on Ctrl+Enter', async () => {
+    const sendMessageAction = jest.fn().mockResolvedValue({ ok: true })
+
+    render(
+      <ChatClient
+        conversationId="conv-1"
+        displayName="Chat"
+        userId="user-1"
+        isGlobalAdmin={false}
+        messages={[]}
+        sendMessageAction={sendMessageAction}
+        deleteMessageAction={jest.fn().mockResolvedValue({ ok: true })}
+        hideMessageAction={jest.fn().mockResolvedValue({ ok: true })}
+        otherParticipants={[]}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: '<p>Hello</p>' } })
+    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter' })
+
+    expect(sendMessageAction).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(screen.getByLabelText('Message composer'), { key: 'Enter', ctrlKey: true })
+
+    await waitFor(() => expect(sendMessageAction).toHaveBeenCalledTimes(1))
+  })
+
+  it('lets the user delete the current chat from the header', async () => {
+    const deleteConversationAction = jest.fn().mockResolvedValue({ ok: true, redirectTo: '/messages' })
+
+    render(
+      <ChatClient
+        conversationId="conv-1"
+        displayName="Chat"
+        userId="user-1"
+        isGlobalAdmin={false}
+        messages={[]}
+        sendMessageAction={jest.fn().mockResolvedValue({ ok: true })}
+        deleteMessageAction={jest.fn().mockResolvedValue({ ok: true })}
+        hideMessageAction={jest.fn().mockResolvedValue({ ok: true })}
+        otherParticipants={[]}
+        deleteConversationAction={deleteConversationAction}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Delete Chat/i }))
+
+    await waitFor(() => {
+      expect(deleteConversationAction).toHaveBeenCalledTimes(1)
+      expect(replace).toHaveBeenCalledWith('/messages')
+    })
   })
 })

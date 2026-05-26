@@ -20,9 +20,11 @@ export default async function AdminReportsPage() {
 
     if (!isAdmin) {
         return (
-            <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border rounded shadow">
-                <h1 className="text-2xl font-bold text-red-500">Access Denied</h1>
-                <p>You must be a Global Administrator to view this page.</p>
+            <div className="page-shell max-w-4xl">
+                <section className="soft-panel mt-12 p-6 sm:p-8">
+                    <h1 className="font-display text-2xl font-semibold tracking-tight text-red-500">Access Denied</h1>
+                    <p className="mt-3 text-sm text-muted-foreground">You must be a global administrator to review escalated reports.</p>
+                </section>
             </div>
         );
     }
@@ -64,47 +66,59 @@ export default async function AdminReportsPage() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto mt-12 p-6 bg-card border-[3px] border-black rounded-none shadow-[8px_8px_0_0_#000] dark:border-white dark:shadow-[8px_8px_0_0_#fff]">
-            <h1 className="text-3xl font-black uppercase mb-8 border-b-[3px] border-black dark:border-white pb-2">Global Reports Queue</h1>
+        <div className="page-shell max-w-6xl space-y-8">
+            <section className="soft-panel mt-12 p-6 sm:p-8">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Trust and safety</p>
+                        <h1 className="font-display mt-2 text-3xl font-semibold tracking-tight">Global reports queue</h1>
+                        <p className="mt-3 max-w-2xl text-sm text-muted-foreground">Review escalated user, content, and moderation incidents from across the instance, with attached context preserved for quick triage.</p>
+                    </div>
+                    <div className="rounded-[20px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600">
+                        {reports.length} open report{reports.length === 1 ? '' : 's'}
+                    </div>
+                </div>
+            </section>
 
             <div className="space-y-6">
                 {reports.map(r => (
-                    <div key={r.id} className="p-4 border-2 border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
-                        <div className="flex justify-between items-start mb-4">
+                    <article key={r.id} className="soft-panel p-5 sm:p-6">
+                        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div>
-                                <span className={`font-bold uppercase text-xs px-2 py-1 text-white mr-2 ${r.status === "escalated" ? "bg-amber-500" : "bg-red-500"}`}>{r.status === "escalated" ? "Escalated" : "Reported"}</span>
-                                <span className="font-bold">{r.reported_username || r.reported_name}</span>
-                                <span className="text-muted-foreground mx-2">by</span>
-                                <span className="font-bold">{r.reporter_username || r.reporter_name}</span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white ${r.status === "escalated" ? "bg-amber-500" : "bg-red-500"}`}>{r.status === "escalated" ? "Escalated" : "Reported"}</span>
+                                    <span className="text-lg font-semibold text-foreground">{r.reported_username || r.reported_name}</span>
+                                    <span className="text-sm text-muted-foreground">reported by {r.reporter_username || r.reporter_name}</span>
+                                </div>
                                 {r.quarry_name && (
-                                    <span className="text-muted-foreground ml-2">in q/{r.quarry_name}</span>
+                                    <p className="mt-2 text-sm text-muted-foreground">In q/{r.quarry_name}</p>
                                 )}
                                 {!r.quarry_name && r.escalated_from_quarry_name && (
-                                    <span className="text-muted-foreground ml-2">from q/{r.escalated_from_quarry_name}</span>
+                                    <p className="mt-2 text-sm text-muted-foreground">Escalated from q/{r.escalated_from_quarry_name}</p>
                                 )}
                             </div>
-                            <div className="text-sm font-bold text-muted-foreground">
+                            <div className="rounded-full border border-border/70 bg-card px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                                 {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
                             </div>
                         </div>
                         {r.target_preview && (
-                            <div className="mb-4 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                            <div className="mb-4 rounded-[20px] border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
                                 {r.target_preview}
                             </div>
                         )}
-                        <div className="p-4 bg-muted/30 border-l-4 border-red-500 mb-4 whitespace-pre-wrap">
+                        <div className="mb-4 rounded-[20px] border border-red-500/35 bg-red-500/5 px-4 py-4 text-sm whitespace-pre-wrap text-foreground">
                             {r.reason}
                         </div>
                         {r.context_snapshot && (
-                            <div className="mb-4 rounded-2xl border border-border/70 bg-card/60 p-4">
+                            <div className="mb-4 rounded-[20px] border border-border/70 bg-card/60 p-4">
                                 <div className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Attached chat context{r.context_size ? ` (${r.context_size} messages)` : ""}</div>
                                 <pre className="whitespace-pre-wrap text-sm text-muted-foreground">{r.context_snapshot}</pre>
                             </div>
                         )}
-                        <div className="flex gap-4">
+                        <div className="flex flex-wrap gap-3">
                             <form action={dismissReport}>
                                 <input type="hidden" name="id" value={r.id} />
-                                <button type="submit" className="px-4 py-2 font-bold border-2 border-black dark:border-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black cursor-pointer shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]">
+                                <button type="submit" className="inline-flex h-10 items-center justify-center rounded-full border border-border/70 px-4 text-sm font-semibold text-foreground transition hover:border-foreground hover:bg-foreground hover:text-background cursor-pointer">
                                     Dismiss
                                 </button>
                             </form>
@@ -132,18 +146,19 @@ export default async function AdminReportsPage() {
                             }}>
                                 <input type="hidden" name="id" value={r.id} />
                                 <input type="hidden" name="reported_id" value={r.reported_id!} />
-                                <button type="submit" className="px-4 py-2 font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444]">
+                                <button type="submit" className="inline-flex h-10 items-center justify-center rounded-full border border-red-500/50 px-4 text-sm font-semibold text-red-600 transition hover:bg-red-500 hover:text-white cursor-pointer">
                                     Action (Ban)
                                 </button>
                             </form>
                         </div>
-                    </div>
+                    </article>
                 ))}
 
                 {reports.length === 0 && (
-                    <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
-                        No pending reports.
-                    </div>
+                    <section className="soft-panel p-12 text-center">
+                        <h2 className="font-display text-2xl font-semibold tracking-tight">Queue clear</h2>
+                        <p className="mt-3 text-sm text-muted-foreground">There are no pending or escalated reports right now.</p>
+                    </section>
                 )}
             </div>
         </div>

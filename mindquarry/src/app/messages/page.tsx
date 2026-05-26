@@ -9,6 +9,7 @@ import { isRateLimited } from "@/lib/rateLimit";
 import { MindQuarryConfig } from "@/lib/config";
 import { Input } from "@/components/ui/input";
 import { MessageSquarePlus, Users } from "lucide-react";
+import { validateMessagingUsername } from "@/lib/messaging";
 
 export default async function MessagesPage() {
     const rawHeaders = await headers();
@@ -52,7 +53,42 @@ export default async function MessagesPage() {
         id: conv.id,
         is_group: conv.is_group,
         updated_at: conv.updated_at,
-        displayName: conv.is_group ? (conv.group_name || "Group Chat") : (conv.displayUsername || conv.username || conv.user_name || "Unknown User")
+        group_name: conv.group_name,
+        participantLabel: conv.displayUsername || conv.username || conv.user_name || null,
+    }));
+
+    const conversationMap = new Map<string, {
+        id: string;
+        is_group: boolean | null;
+        updated_at: Date | null;
+        group_name: string | null;
+        participantLabels: Set<string>;
+    }>();
+
+    for (const conversation of enrichedConversations) {
+        const existing = conversationMap.get(conversation.id) || {
+            id: conversation.id,
+            is_group: conversation.is_group,
+            updated_at: conversation.updated_at,
+            group_name: conversation.group_name,
+            participantLabels: new Set<string>(),
+        };
+
+        if (conversation.participantLabel) {
+            existing.participantLabels.add(conversation.participantLabel);
+        }
+
+        conversationMap.set(conversation.id, existing);
+    }
+
+    const dedupedConversations = Array.from(conversationMap.values()).map((conversation) => ({
+        id: conversation.id,
+        is_group: conversation.is_group,
+        updated_at: conversation.updated_at,
+        displayName: conversation.is_group
+            ? (conversation.group_name || Array.from(conversation.participantLabels).join(", ") || "Group Chat")
+            : (Array.from(conversation.participantLabels)[0] || "Unknown User"),
+        participantCount: conversation.is_group ? conversation.participantLabels.size + 1 : 2,
     }));
 
     async function startNewChat(formData: FormData) {
@@ -67,39 +103,11 @@ export default async function MessagesPage() {
         const targetUsername = formData.get("username") as string;
         if (!targetUsername) return;
 
-        const targetUser = await db.selectFrom("user").select("id").where("username", "=", targetUsername).executeTakeFirst();
-        if (!targetUser || targetUser.id === session.user.id) return; // In real app: show error
-
-        // Check messaging privacy
-        const targetProfile = await db.selectFrom("profiles").select("messaging_privacy").where("user_id", "=", targetUser.id).executeTakeFirst();
-        const privacy = targetProfile?.messaging_privacy || 'anyone';
-
-        // 1. Fetch all privacy data primitives concurrently
-        const isMutualResult = await db.selectFrom("follows as f1")
-            .selectAll()
-            .where("f1.follower_id", "=", session.user.id)
-            .where("f1.following_id", "=", targetUser.id)
-            .where("f1.is_mutual", "=", true)
-            .executeTakeFirst();
-
-        const sharesQuarryResult = await db.selectFrom("quarry_members as qm1")
-            .innerJoin("quarry_members as qm2", "qm1.quarry_id", "qm2.quarry_id")
-            .select("qm1.quarry_id")
-            .where("qm1.user_id", "=", session.user.id)
-            .where("qm2.user_id", "=", targetUser.id)
-            .executeTakeFirst();
-
-        const isMutual = !!isMutualResult;
-        const sharesQuarry = !!sharesQuarryResult;
-
-        if (!isMutual) {
-            if (privacy === 'mutuals') {
-                return; // Blocked safely
-            }
-            if (privacy === 'quarry_members' && !sharesQuarry) {
-                return; // Blocked safely
-            }
-        }
+        const targetUser = await validateMessagingUsername({
+            viewerUserId: session.user.id,
+            rawUsername: targetUsername,
+        });
+        if (!targetUser.ok || !targetUser.userId) return;
 
         const convId = generateUUID();
 
@@ -116,7 +124,7 @@ export default async function MessagesPage() {
             .insertInto("conversation_participants")
             .values([
                 { conversation_id: convId, user_id: session.user.id, role: 'admin' },
-                { conversation_id: convId, user_id: targetUser.id, role: 'member' }
+                { conversation_id: convId, user_id: targetUser.userId, role: 'member' }
             ])
             .execute();
 
@@ -124,7 +132,7 @@ export default async function MessagesPage() {
     }
 
     return (
-        <div className="page-shell">
+        <div className="page-shell max-w-7xl">
             <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
                     <p className="font-display text-xs font-semibold uppercase tracking-[0.24em] text-sky-600 dark:text-sky-400">Messages</p>
@@ -137,9 +145,9 @@ export default async function MessagesPage() {
                 </Link>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="md:col-span-1 space-y-6">
-                    <div className="soft-panel p-5">
+            <div className="grid gap-6 xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)]">
+                <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+                    <div className="soft-panel p-5 sm:p-6">
                         <h2 className="font-display mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Start New Chat</h2>
                         <form action={startNewChat} className="space-y-4">
                             <div className="relative flex items-center overflow-hidden rounded-full border border-border/70 bg-card/85 shadow-sm transition duration-200 focus-within:border-sky-400/70 focus-within:shadow-[0_0_0_4px_rgba(14,165,233,0.12)]">
@@ -155,18 +163,23 @@ export default async function MessagesPage() {
                     </div>
                 </div>
 
-                <div className="md:col-span-2 space-y-4">
-                    {enrichedConversations.map(conv => (
-                        <Link href={`/messages/${conv.id}`} key={conv.id} className="soft-card block p-5 flex justify-between items-center gap-4">
-                            <div>
-                                <h3 className="font-display text-lg font-semibold tracking-tight">{conv.displayName}</h3>
-                                {conv.is_group && <span className="mt-2 inline-flex rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Group</span>}
+                <div className="space-y-4">
+                    {dedupedConversations.map(conv => (
+                        <Link href={`/messages/${conv.id}`} key={conv.id} className="soft-card flex flex-col p-5 sm:p-6">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                    <h3 className="font-display truncate text-lg font-semibold tracking-tight sm:text-xl">{conv.displayName}</h3>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                        <span className="rounded-full border border-border/70 bg-muted/40 px-3 py-1">{conv.is_group ? "Group" : "Direct"}</span>
+                                        {conv.is_group && <span>{conv.participantCount} members</span>}
+                                    </div>
+                                </div>
+                                <span className="shrink-0 text-xs font-bold text-muted-foreground">{conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}</span>
                             </div>
-                            <span className="text-xs text-muted-foreground font-bold">{conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}</span>
                         </Link>
                     ))}
 
-                    {enrichedConversations.length === 0 && (
+                    {dedupedConversations.length === 0 && (
                         <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
                             You have no messages yet.
                         </div>

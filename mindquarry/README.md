@@ -13,6 +13,7 @@ At a product level, this app is a Q&A system with community boundaries, moderati
 - Voting and view tracking
 - Rich-text authoring and sanitized rendering
 - Thread follow/subscription flows
+- Mention suggestions sourced from followed users and current thread participants, plus `@all` support for notifying thread followers
 
 ### Search And Discovery
 
@@ -24,7 +25,7 @@ At a product level, this app is a Q&A system with community boundaries, moderati
 ### Identity And Social Features
 
 - Better Auth login and signup
-- Profiles, follows, mentions, and notifications
+- Profiles, follows, mentions, notifications, and live SSE badge updates
 - Profile visibility and messaging privacy controls
 
 ### Messaging
@@ -63,6 +64,8 @@ Useful shortcuts:
 - `npm run dev`: start the app with Turbopack
 - `npm run verify`: run build, Jest in-band, and Playwright in sequence
 - `npm run sessions:cleanup`: remove expired Better Auth sessions
+
+Authenticated Playwright coverage uses `e2e/global.setup.ts` and `e2e/auth.shared.ts`. When the repo root `.env` provides `test_user`, `test_password`, and `test_email`, the setup will provision or sign in that user automatically before browser tests run.
 
 For the dedicated test guide, see [docs/testing/README.md](docs/testing/README.md).
 

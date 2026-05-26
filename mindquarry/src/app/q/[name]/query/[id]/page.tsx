@@ -7,6 +7,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { CopyLinkButton } from "./CopyLinkButton";
 import { TipTapRenderer } from "@/components/TipTapRenderer";
+import { RoleBadges } from "@/components/role-badges";
 import { isRateLimited } from "@/lib/rateLimit";
 import { sql } from "kysely";
 import { SubmitAnswerForm } from "./SubmitAnswerForm";
@@ -124,6 +125,35 @@ export default async function QueryDiscussionPage({
         .orderBy("score", "desc")
         .orderBy("created_at", "asc")
         .execute();
+
+    const followedUsernames = session?.user?.id
+        ? await db.selectFrom("follows")
+            .innerJoin("user", "user.id", "follows.following_id")
+            .select("user.username")
+            .where("follows.follower_id", "=", session.user.id)
+            .orderBy("user.username", "asc")
+            .execute()
+        : [];
+
+    const mentionSuggestions = Array.from(new Set([
+        ...followedUsernames.map((row) => row.username),
+        query.username,
+        ...answers.map((answer) => answer.username),
+        "all",
+    ].filter((username): username is string => Boolean(username))));
+
+    const authorIds = Array.from(new Set(
+        [query.author_id, ...answers.map((answer) => answer.author_id)]
+            .filter((authorId): authorId is string => Boolean(authorId)),
+    ));
+    const authorRoles = authorIds.length > 0
+        ? await db.selectFrom("quarry_members")
+            .select(["user_id", "role"])
+            .where("quarry_id", "=", quarry.id)
+            .where("user_id", "in", authorIds)
+            .execute()
+        : [];
+    const authorRoleMap = new Map(authorRoles.map((entry) => [entry.user_id, entry.role]));
 
     void recordQueryView({
         queryId: query.id,
@@ -480,22 +510,30 @@ export default async function QueryDiscussionPage({
                     <article key={a.id} id={`answer-${a.id}`} className="soft-card p-5">
                         <input type="checkbox" id={`collapse-${a.id}`} className="peer hidden" />
                         <div className="flex gap-4">
-                            <div className="min-w-[58px] rounded-[18px] border border-border/70 bg-muted/30 p-2">
+                            <div className="min-w-14.5 rounded-[18px] border border-border/70 bg-muted/30 p-2">
                                 <VoteControls score={a.score} action={voteAnswer} fields={{ answer_id: a.id }} compact />
                                 {query.accepted_answer_id === a.id && (
                                     <div className="mt-2 rounded-full border border-green-500/40 bg-green-500/10 px-2 py-1 text-center text-xs font-semibold text-green-600">Accepted</div>
                                 )}
                             </div>
-                            <div className="flex-1">
-                                <div className="mb-2 flex flex-col gap-2 text-xs font-semibold text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                                    <span>{a.displayUsername || a.username || a.name} • {a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}</span>
+                            <div className="flex-1 min-w-0">
+                                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0 space-y-1.5">
+                                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
+                                            <span className="max-w-full wrap-break-word">{a.displayUsername || a.username || a.name}</span>
+                                            <RoleBadges quarryRole={authorRoleMap.get(a.author_id || "") || null} />
+                                        </div>
+                                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                            {a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}
+                                        </div>
+                                    </div>
                                     <div className="flex gap-2">
                                         <CopyLinkButton answerId={a.id} />
                                         <details className="relative">
                                             <summary className="soft-button inline-flex cursor-pointer list-none rounded-full px-3 py-1 text-xs" aria-label="Answer actions">
                                                 <Ellipsis className="h-4 w-4" />
                                             </summary>
-                                            <div className="absolute right-0 top-10 z-20 w-[min(22rem,80vw)] rounded-[24px] border border-border/70 bg-card p-4 shadow-lg">
+                                            <div className="absolute right-0 top-10 z-20 w-[min(22rem,80vw)] rounded-3xl border border-border/70 bg-card p-4 shadow-lg">
                                                 <div className="space-y-3 text-sm">
                                                     {session?.user && !query.is_archived && (
                                                         <details>
@@ -505,6 +543,7 @@ export default async function QueryDiscussionPage({
                                                                     parentId={a.id}
                                                                     defaultBody={buildQuotedReply(a.body)}
                                                                     submitAction={submitAnswer}
+                                                                    mentionSuggestions={mentionSuggestions}
                                                                 />
                                                             </div>
                                                         </details>
@@ -523,6 +562,7 @@ export default async function QueryDiscussionPage({
                                                                     submitLabel="Save Answer"
                                                                     submittingLabel="Saving..."
                                                                     resetOnSuccess={false}
+                                                                    mentionSuggestions={mentionSuggestions}
                                                                 />
                                                                 <form action={deleteAnswer}>
                                                                     <input type="hidden" name="answer_id" value={a.id} />
@@ -577,7 +617,7 @@ export default async function QueryDiscussionPage({
 
             <section className="soft-panel relative flex gap-6 p-6 sm:p-8">
                 {query.score !== null && query.score <= MindQuarryConfig.FORUM.MIN_SCORE_VISIBILITY && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-[24px] bg-muted/95 backdrop-blur-md text-red-600">
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-3xl bg-muted/95 backdrop-blur-md text-red-600">
                         <span className="mb-4 text-xl font-semibold uppercase tracking-[0.14em]">Hidden due to low score ({MindQuarryConfig.FORUM.MIN_SCORE_VISIBILITY} or below)</span>
                         <label htmlFor="reveal-query" className="soft-button cursor-pointer px-6 py-2">
                             Reveal Anyway
@@ -586,7 +626,7 @@ export default async function QueryDiscussionPage({
                 )}
                 <input type="checkbox" id="reveal-query" className="peer hidden" />
 
-                <div className="rounded-[18px] border border-border/70 bg-muted/30 p-3 peer-checked:[&~div]:!opacity-100">
+                <div className="rounded-[18px] border border-border/70 bg-muted/30 p-3 peer-checked:[&~div]:opacity-100!">
                     <VoteControls score={query.score} action={voteQuery} />
                 </div>
                 <div className="flex-1 peer-checked:opacity-100">
@@ -617,7 +657,7 @@ export default async function QueryDiscussionPage({
                                 <summary className="cursor-pointer list-none rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-sky-400/70 hover:text-sky-600">
                                     Actions
                                 </summary>
-                                <div className="absolute right-0 top-12 z-20 w-[min(26rem,80vw)] rounded-[24px] border border-border/70 bg-card p-4 shadow-lg">
+                                <div className="absolute right-0 top-12 z-20 w-[min(26rem,80vw)] rounded-3xl border border-border/70 bg-card p-4 shadow-lg">
                                     <div className="space-y-3 text-sm">
                                         {session?.user?.id === query.author_id && (
                                             <details>
@@ -632,6 +672,7 @@ export default async function QueryDiscussionPage({
                                                         selectedTagIds={queryTags.map((tag) => tag.id)}
                                                         submitLabel="Save Query"
                                                         submittingLabel="Saving..."
+                                                        mentionSuggestions={mentionSuggestions}
                                                     />
                                                 </div>
                                             </details>
@@ -662,8 +703,14 @@ export default async function QueryDiscussionPage({
                             ))}
                         </div>
                     )}
-                    <div className="mb-6 flex flex-col gap-3 border-b border-border/70 pb-4 pt-4 text-sm font-semibold text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                        <span>Asked by {query.displayUsername || query.username || query.name} on {query.created_at ? new Date(query.created_at).toLocaleDateString() : ''} • {query.views} views</span>
+                    <div className="mb-6 border-b border-border/70 pb-4 pt-4">
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
+                            <span>Asked by {query.displayUsername || query.username || query.name}</span>
+                            <RoleBadges quarryRole={authorRoleMap.get(query.author_id || "") || null} />
+                        </div>
+                        <div className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            {query.created_at ? new Date(query.created_at).toLocaleDateString() : ''} • {query.views} views
+                        </div>
                     </div>
                     {resolvedSearchParams.queued === "answer" && (
                         <div className="mb-4 rounded-[20px] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
@@ -688,7 +735,7 @@ export default async function QueryDiscussionPage({
             {session?.user && !query.is_archived && (
                 <div className="soft-panel mt-12 p-6 sm:p-8">
                     <h3 className="font-display mb-4 text-2xl font-semibold tracking-tight">Your Answer</h3>
-                    <SubmitAnswerForm submitAction={submitAnswer} />
+                    <SubmitAnswerForm submitAction={submitAnswer} mentionSuggestions={mentionSuggestions} />
                 </div>
             )}
 

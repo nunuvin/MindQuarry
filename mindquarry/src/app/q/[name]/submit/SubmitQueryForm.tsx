@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TipTapEditor } from "@/components/TipTapEditor";
 import { hasRichTextContent } from "@/lib/utils";
 
@@ -26,6 +26,7 @@ export function SubmitQueryForm({
     initialCustomTags = "",
     submitLabel = "Post Query",
     submittingLabel = "Posting...",
+    mentionSuggestions = [],
 }: {
     submitAction: (formData: FormData) => Promise<SubmitQueryResult | void>;
     availableTags?: SubmitQueryTag[];
@@ -36,7 +37,9 @@ export function SubmitQueryForm({
     initialCustomTags?: string;
     submitLabel?: string;
     submittingLabel?: string;
+    mentionSuggestions?: string[];
 }) {
+    const formRef = useRef<HTMLFormElement | null>(null);
     const [title, setTitle] = useState(initialTitle);
     const [body, setBody] = useState(initialBody);
     const [error, setError] = useState("");
@@ -85,14 +88,29 @@ export function SubmitQueryForm({
     };
 
     return (
-        <form action={handleSend} className="space-y-6">
+        <form ref={formRef} action={handleSend} className="space-y-6">
             <div>
                 <label htmlFor="submit-query-title" className="block font-bold mb-2">Title</label>
                 <input id="submit-query-title" name="title" required value={title} onChange={(event) => setTitle(event.target.value)} className="w-full p-3 border-2 border-black dark:border-white bg-transparent outline-none focus:ring-2 focus:ring-blue-500 font-bold" placeholder="What is your question?" />
             </div>
             <div>
                 <label className="block font-bold mb-2">Body</label>
-                <TipTapEditor name="body" value={body} onChange={setBody} placeholder="Add the details people need to answer well..." />
+                <TipTapEditor
+                    name="body"
+                    value={body}
+                    onChange={setBody}
+                    mentionSuggestions={mentionSuggestions}
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey && !event.altKey && (event.ctrlKey || event.metaKey)) {
+                            event.preventDefault();
+                            formRef.current?.requestSubmit();
+                            return true;
+                        }
+
+                        return false;
+                    }}
+                    placeholder="Add the details people need to answer well..."
+                />
             </div>
             {availableTags.length > 0 && (
                 <div className="space-y-3">

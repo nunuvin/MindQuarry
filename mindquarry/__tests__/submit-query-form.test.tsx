@@ -3,13 +3,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SubmitQueryForm } from '@/app/q/[name]/submit/SubmitQueryForm'
 
 jest.mock('@/components/TipTapEditor', () => ({
-  TipTapEditor: ({ name, value, onChange, placeholder }: { name: string; value: string; onChange: (value: string) => void; placeholder: string }) => (
+  TipTapEditor: ({ name, value, onChange, onKeyDown, placeholder }: { name: string; value: string; onChange: (value: string) => void; onKeyDown?: (event: KeyboardEvent) => boolean; placeholder: string }) => (
     <textarea
       aria-label="Body"
       name={name}
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => onKeyDown?.(event as unknown as KeyboardEvent)}
     />
   ),
 }))
@@ -54,5 +55,17 @@ describe('SubmitQueryForm', () => {
 
     expect(await screen.findByText('Both the title and body are required.')).toBeInTheDocument()
     expect(submitAction).not.toHaveBeenCalled()
+  })
+
+  it('submits from the editor when Ctrl+Enter is pressed', async () => {
+    const submitAction = jest.fn().mockResolvedValue({ ok: true })
+
+    render(<SubmitQueryForm submitAction={submitAction} />)
+
+    fireEvent.change(screen.getByPlaceholderText('What is your question?'), { target: { value: 'How do I submit quickly?' } })
+    fireEvent.change(screen.getByLabelText('Body'), { target: { value: '<p>Use the keyboard shortcut.</p>' } })
+    fireEvent.keyDown(screen.getByLabelText('Body'), { key: 'Enter', ctrlKey: true })
+
+    await waitFor(() => expect(submitAction).toHaveBeenCalledTimes(1))
   })
 })

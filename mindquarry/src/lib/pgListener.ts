@@ -25,13 +25,14 @@ export async function getSharedPgListener() {
         await client.connect();
 
         client.on("notification", (msg) => {
-            if (msg.channel === "new_message_event" || msg.channel === "read_receipt_event") {
+            if (msg.channel === "new_message_event" || msg.channel === "read_receipt_event" || msg.channel === "notification_event") {
                 chatEventEmitter.emit(msg.channel, msg.payload);
             }
         });
 
         await client.query("LISTEN new_message_event");
         await client.query("LISTEN read_receipt_event");
+        await client.query("LISTEN notification_event");
 
         client.on("error", (err) => {
             console.error("Shared PG listener error:", err);

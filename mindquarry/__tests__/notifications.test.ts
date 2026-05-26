@@ -10,6 +10,8 @@ import {
   unsubscribeUserFromQuery,
 } from '@/lib/notifications'
 
+const sqlExecute = jest.fn().mockResolvedValue(undefined)
+
 const selectFromQueues: Record<string, Array<() => unknown>> = {}
 const insertIntoHandlers = new Map<string, () => unknown>()
 const deleteFromHandlers = new Map<string, () => unknown>()
@@ -72,9 +74,16 @@ jest.mock('@/lib/utils', () => ({
   richTextToPlainText: jest.fn((content: string) => content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()),
 }))
 
+jest.mock('kysely', () => ({
+  sql: () => ({
+    execute: (...args: unknown[]) => sqlExecute(...args),
+  }),
+}))
+
 describe('notifications helpers', () => {
   beforeEach(() => {
     resetQueues()
+    sqlExecute.mockClear()
   })
 
   it('extracts unique, lowercase mentioned usernames', () => {
@@ -209,21 +218,20 @@ describe('notifications helpers', () => {
 
   it('only notifies interacted-only mentions when the user participated in the thread', async () => {
     const executeResolvedMentionedUsers = jest.fn().mockResolvedValue([
+      { id: 'user-2', username: 'bob' },
+      { id: 'user-3', username: 'carol' },
+    ])
+    const whereResolvedNotActor = jest.fn(() => ({ execute: executeResolvedMentionedUsers }))
+    const whereResolvedUsernames = jest.fn(() => ({ where: whereResolvedNotActor }))
+    const selectResolvedMentionedUsers = jest.fn(() => ({ where: whereResolvedUsernames }))
+
+    const executeMentionPreferences = jest.fn().mockResolvedValue([
       { id: 'user-2', username: 'bob', mention_notifications: 'interacted_only' },
       { id: 'user-3', username: 'carol', mention_notifications: 'all' },
     ])
-    const whereNotActor = jest.fn(() => ({ execute: executeResolvedMentionedUsers }))
-    const whereUsernames = jest.fn(() => ({ where: whereNotActor }))
-    const selectResolvedMentionedUsers = jest.fn(() => ({ where: whereUsernames }))
-
-    const executeTakeFirstMentionedUser = jest.fn().mockResolvedValue({
-      id: 'user-2',
-      username: 'bob',
-      mention_notifications: 'interacted_only',
-    })
-    const whereMentionedUserId = jest.fn(() => ({ executeTakeFirst: executeTakeFirstMentionedUser }))
-    const selectMentionedUser = jest.fn(() => ({ where: whereMentionedUserId }))
-    const leftJoinUsers = jest.fn(() => ({ select: selectMentionedUser }))
+    const whereMentionIds = jest.fn(() => ({ execute: executeMentionPreferences }))
+    const selectMentionPreferences = jest.fn(() => ({ where: whereMentionIds }))
+    const leftJoinProfiles = jest.fn(() => ({ select: selectMentionPreferences }))
 
     const executeQueryAuthor = jest.fn().mockResolvedValue({ user_id: 'user-2' })
     const whereQueryId = jest.fn(() => ({ executeTakeFirst: executeQueryAuthor }))
@@ -241,7 +249,7 @@ describe('notifications helpers', () => {
     const values = jest.fn(() => ({ execute: executeInsert }))
 
     queueSelectFrom('user', () => ({ select: selectResolvedMentionedUsers }))
-    queueSelectFrom('user', () => ({ leftJoin: leftJoinUsers }))
+    queueSelectFrom('user', () => ({ leftJoin: leftJoinProfiles }))
     queueSelectFrom('queries', () => ({ select: selectQueryAuthor }))
     queueSelectFrom('answers', () => ({ select: selectAnswerAuthors }))
     queueSelectFrom('query_subscriptions', () => ({ select: selectSubscribers }))
@@ -255,34 +263,34 @@ describe('notifications helpers', () => {
       queryId: 'query-1',
     })
 
-    expect(values).toHaveBeenCalledWith([
-      expect.objectContaining({ user_id: 'user-2', type: 'mention' }),
-    ])
+    expect(values).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ user_id: 'user-2', type: 'mention', source_id: 'bob' }),
+      expect.objectContaining({ user_id: 'user-3', type: 'mention', source_id: 'carol' }),
+    ]))
   })
 
   it('skips interacted-only mention recipients when there is no qualifying interaction context', async () => {
     const executeResolvedMentionedUsers = jest.fn().mockResolvedValue([
+      { id: 'user-2', username: 'bob' },
+      { id: 'user-3', username: 'carol' },
+    ])
+    const whereResolvedNotActor = jest.fn(() => ({ execute: executeResolvedMentionedUsers }))
+    const whereResolvedUsernames = jest.fn(() => ({ where: whereResolvedNotActor }))
+    const selectResolvedMentionedUsers = jest.fn(() => ({ where: whereResolvedUsernames }))
+
+    const executeMentionPreferences = jest.fn().mockResolvedValue([
       { id: 'user-2', username: 'bob', mention_notifications: 'interacted_only' },
       { id: 'user-3', username: 'carol', mention_notifications: 'all' },
     ])
-    const whereNotActor = jest.fn(() => ({ execute: executeResolvedMentionedUsers }))
-    const whereUsernames = jest.fn(() => ({ where: whereNotActor }))
-    const selectResolvedMentionedUsers = jest.fn(() => ({ where: whereUsernames }))
-
-    const executeTakeFirstMentionedUser = jest.fn().mockResolvedValue({
-      id: 'user-2',
-      username: 'bob',
-      mention_notifications: 'interacted_only',
-    })
-    const whereMentionedUserId = jest.fn(() => ({ executeTakeFirst: executeTakeFirstMentionedUser }))
-    const selectMentionedUser = jest.fn(() => ({ where: whereMentionedUserId }))
-    const leftJoinUsers = jest.fn(() => ({ select: selectMentionedUser }))
+    const whereMentionIds = jest.fn(() => ({ execute: executeMentionPreferences }))
+    const selectMentionPreferences = jest.fn(() => ({ where: whereMentionIds }))
+    const leftJoinProfiles = jest.fn(() => ({ select: selectMentionPreferences }))
 
     const executeInsert = jest.fn().mockResolvedValue(undefined)
     const values = jest.fn(() => ({ execute: executeInsert }))
 
     queueSelectFrom('user', () => ({ select: selectResolvedMentionedUsers }))
-    queueSelectFrom('user', () => ({ leftJoin: leftJoinUsers }))
+    queueSelectFrom('user', () => ({ leftJoin: leftJoinProfiles }))
     insertIntoHandlers.set('notifications', () => ({ values }))
 
     await notifyMentions({
@@ -292,7 +300,71 @@ describe('notifications helpers', () => {
       title: 'Mentioned you',
     })
 
-    expect(values).not.toHaveBeenCalled()
+    expect(values).toHaveBeenCalledWith([
+      expect.objectContaining({ user_id: 'user-3', type: 'mention', source_id: 'carol' }),
+    ])
+  })
+
+  it('fans out @all mentions to thread subscribers who were not directly mentioned', async () => {
+    const executeResolvedMentionedUsers = jest.fn().mockResolvedValue([
+      { id: 'user-2', username: 'bob' },
+    ])
+    const whereResolvedNotActor = jest.fn(() => ({ execute: executeResolvedMentionedUsers }))
+    const whereResolvedUsernames = jest.fn(() => ({ where: whereResolvedNotActor }))
+    const selectResolvedMentionedUsers = jest.fn(() => ({ where: whereResolvedUsernames }))
+
+    const executeMentionPreferences = jest.fn().mockResolvedValue([
+      { id: 'user-2', username: 'bob', mention_notifications: 'all' },
+    ])
+    const whereMentionIds = jest.fn(() => ({ execute: executeMentionPreferences }))
+    const selectMentionPreferences = jest.fn(() => ({ where: whereMentionIds }))
+    const leftJoinProfiles = jest.fn(() => ({ select: selectMentionPreferences }))
+
+    const executeQueryAuthor = jest.fn().mockResolvedValue({ user_id: 'user-2' })
+    const whereQueryId = jest.fn(() => ({ executeTakeFirst: executeQueryAuthor }))
+    const selectQueryAuthor = jest.fn(() => ({ where: whereQueryId }))
+
+    const executeAnswerAuthors = jest.fn().mockResolvedValue([{ user_id: 'user-4' }])
+    const whereAnswerQueryId = jest.fn(() => ({ execute: executeAnswerAuthors }))
+    const selectAnswerAuthors = jest.fn(() => ({ where: whereAnswerQueryId }))
+
+    const executeSubscribersForInteractions = jest.fn().mockResolvedValue([{ user_id: 'user-5' }])
+    const whereInteractedSubscriptions = jest.fn(() => ({ execute: executeSubscribersForInteractions }))
+    const selectInteractedSubscriptions = jest.fn(() => ({ where: whereInteractedSubscriptions }))
+
+    const executeMentionAllSubscribers = jest.fn().mockResolvedValue([
+      { user_id: 'user-2' },
+      { user_id: 'user-4' },
+      { user_id: 'user-5' },
+      { user_id: 'user-1' },
+    ])
+    const whereMentionAllQueryId = jest.fn(() => ({ execute: executeMentionAllSubscribers }))
+    const selectMentionAllSubscribers = jest.fn(() => ({ where: whereMentionAllQueryId }))
+
+    const executeInsert = jest.fn().mockResolvedValue(undefined)
+    const values = jest.fn(() => ({ execute: executeInsert }))
+
+    queueSelectFrom('user', () => ({ select: selectResolvedMentionedUsers }))
+    queueSelectFrom('user', () => ({ leftJoin: leftJoinProfiles }))
+    queueSelectFrom('queries', () => ({ select: selectQueryAuthor }))
+    queueSelectFrom('answers', () => ({ select: selectAnswerAuthors }))
+    queueSelectFrom('query_subscriptions', () => ({ select: selectInteractedSubscriptions }))
+    queueSelectFrom('query_subscriptions', () => ({ select: selectMentionAllSubscribers }))
+    insertIntoHandlers.set('notifications', () => ({ values }))
+
+    await notifyMentions({
+      actorUserId: 'user-1',
+      content: '<p>Hello @bob and @all</p>',
+      href: '/q/javascript/query/query-1',
+      title: 'Alice mentioned you',
+      queryId: 'query-1',
+    })
+
+    expect(values).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ user_id: 'user-2', type: 'mention', source_id: 'bob', title: 'Alice mentioned you' }),
+      expect.objectContaining({ user_id: 'user-4', type: 'mention_all', source_id: 'all', title: 'Alice used @all' }),
+      expect.objectContaining({ user_id: 'user-5', type: 'mention_all', source_id: 'all', title: 'Alice used @all' }),
+    ]))
   })
 
   it('returns notification page items ordered by most recent activity', async () => {

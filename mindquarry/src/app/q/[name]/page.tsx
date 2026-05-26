@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { sql } from "kysely";
 import { VoteControls } from "@/components/vote-controls";
+import { RoleBadges } from "@/components/role-badges";
 import { getRichTextPreview } from "@/lib/utils";
 import { applyQueryVote } from "@/lib/votes";
 import { revalidatePath } from "next/cache";
@@ -79,7 +80,7 @@ export default async function QuarryPage({
         .leftJoin("query_views", "query_views.query_id", "queries.id")
         .select((eb) => [
             "queries.id", "queries.title", "queries.body", "queries.score",
-            "queries.accepted_answer_id", "queries.created_at", "user.name", "user.displayUsername", "user.username",
+            "queries.accepted_answer_id", "queries.created_at", "queries.user_id as author_id", "user.name", "user.displayUsername", "user.username",
             eb.fn.coalesce("query_views.views", sql<number>`0`).as("views"),
             "queries.validation_status",
             "queries.is_archived",
@@ -97,6 +98,20 @@ export default async function QuarryPage({
         .where("queries.validation_status", "=", "approved")
         .orderBy("created_at", "desc")
         .execute();
+
+    const authorIds = Array.from(new Set(
+        queries
+            .map((entry) => entry.author_id)
+            .filter((authorId): authorId is string => Boolean(authorId)),
+    ));
+    const authorRoles = authorIds.length > 0
+        ? await db.selectFrom("quarry_members")
+            .select(["user_id", "role"])
+            .where("quarry_id", "=", quarry.id)
+            .where("user_id", "in", authorIds)
+            .execute()
+        : [];
+    const authorRoleMap = new Map(authorRoles.map((entry) => [entry.user_id, entry.role]));
 
     const queryTagMap = await getQueryTagMap(queries.map((entry) => entry.id));
 
@@ -178,9 +193,15 @@ export default async function QuarryPage({
                                     {getRichTextPreview(q.body || q.first_answer_body || "")}
                                 </p>
                             )}
-                            <div className="mt-4 flex flex-col gap-2 border-t border-border/70 pt-3 text-xs font-semibold text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                                <span>{q.views} views</span>
-                                <span>Asked by {q.displayUsername || q.username || q.name} on {q.created_at ? new Date(q.created_at).toLocaleDateString() : ''}</span>
+                            <div className="mt-4 border-t border-border/70 pt-3">
+                                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
+                                    <span>Asked by {q.displayUsername || q.username || q.name}</span>
+                                    <RoleBadges quarryRole={authorRoleMap.get(q.author_id || "") || null} />
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                    <span>{q.created_at ? new Date(q.created_at).toLocaleDateString() : ''}</span>
+                                    <span>{q.views} views</span>
+                                </div>
                             </div>
                         </div>
                     </article>

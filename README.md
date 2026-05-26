@@ -15,6 +15,7 @@ MindQuarry is built around topical communities and discussion threads:
 - Threads support voting, accepted answers, follows, mentions, notifications, and view tracking.
 - Profiles and communities support visibility controls, so some content is public, some is authenticated-only, and some is membership-scoped.
 - Messaging supports inbox, group conversations, read state, streaming updates, soft-deleted message tombstones, and admin moderation.
+- Group chats support custom names, participant add or remove flows, per-user chat deletion or leave behavior, and privacy-aware username validation.
 - Quarry admins and moderators can work pending-review queues, hide content, review moderation history, and apply per-user posting restrictions.
 - Instance admins can manage users, search across admin-only content, issue temporary passwords that force a password change on next login, and navigate directly into quarry moderation flows.
 
@@ -28,10 +29,12 @@ The product already includes:
 - Search across users, quarries, and queries with `u:`, `q:`, `p:`, and `query:` prefixes.
 - Admin-aware search results with access-aware edge styling for public, signed-in, membership-only, and admin-only hits.
 - Query and answer voting, accepted answers, and per-thread subscriptions.
-- Follows, mentions, notifications, unread counts, and profile metrics.
+- Follows, mention autocomplete, `@all` thread fanout, notifications, unread counts, and profile metrics.
 - Profile visibility and messaging privacy controls.
 - Self-service password change in settings, plus admin-issued temporary passwords with forced password rotation on next sign-in.
 - Direct messaging, group chats, read receipts, and event-driven refresh behavior.
+- Live notification badge updates over Server-Sent Events, with polling fallback where needed.
+- Keyboard-friendly rich text flows, including `Ctrl+Enter` / `Cmd+Enter` submission for chat messages, answers, and new queries.
 - Query, answer, chat-message, and whole-conversation reporting, with quarry-to-instance escalation support and stored moderation context.
 - Account self-deletion with authored content reassigned to the deleted-user sentinel instead of being orphaned.
 - Quarry moderation roles for admins and moderators.
@@ -130,6 +133,8 @@ npm run verify
 ```
 
 For the dedicated testing guide, see [mindquarry/docs/testing/README.md](mindquarry/docs/testing/README.md).
+
+For authenticated browser coverage, Playwright now bootstraps a seeded account from repo-root `.env` keys named `test_user`, `test_password`, and `test_email`. The global setup will create that account through Better Auth if it is missing locally, then store session state under `mindquarry/playwright/.auth/`.
 
 ## More Documentation
 

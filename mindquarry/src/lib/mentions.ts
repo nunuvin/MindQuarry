@@ -3,6 +3,11 @@ import { richTextToPlainText } from "./utils";
 
 const mentionPattern = /(^|[\s(])@([a-zA-Z0-9_]+)/g;
 
+export type MentionedUser = {
+    id: string;
+    username: string;
+};
+
 function stripMentionAnchors(content: string) {
     return content.replace(/<a\b[^>]*data-mention=(['"])true\1[^>]*>@([a-zA-Z0-9_]+)<\/a>/gi, "@$2");
 }
@@ -15,28 +20,49 @@ function escapeRegex(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function extractMentionedUsernames(content: string) {
+function extractMentionDirectives(content: string) {
     const plainText = richTextToPlainText(stripQuotedContent(stripMentionAnchors(content)));
     const usernames: string[] = [];
     const seen = new Set<string>();
+    let mentionsAll = false;
 
     for (const match of plainText.matchAll(mentionPattern)) {
-        const username = match[2]?.trim().toLowerCase();
+        const token = match[2]?.trim().toLowerCase();
 
-        if (username && !seen.has(username)) {
-            seen.add(username);
-            usernames.push(username);
+        if (!token) {
+            continue;
+        }
+
+        if (token === "all") {
+            mentionsAll = true;
+            continue;
+        }
+
+        if (!seen.has(token)) {
+            seen.add(token);
+            usernames.push(token);
         }
     }
 
-    return usernames;
+    return {
+        usernames,
+        mentionsAll,
+    };
 }
 
-export async function resolveFirstMentionedUser(content: string, excludeUserId?: string | null) {
+export function extractMentionedUsernames(content: string) {
+    return extractMentionDirectives(content).usernames;
+}
+
+export function hasAllMention(content: string) {
+    return extractMentionDirectives(content).mentionsAll;
+}
+
+export async function resolveMentionedUsers(content: string, excludeUserId?: string | null): Promise<MentionedUser[]> {
     const usernames = extractMentionedUsernames(content);
 
     if (usernames.length === 0) {
-        return null;
+        return [];
     }
 
     let query = db.selectFrom("user")
@@ -54,41 +80,51 @@ export async function resolveFirstMentionedUser(content: string, excludeUserId?:
             .map((user) => [user.username!.toLowerCase(), user]),
     );
 
-    for (const username of usernames) {
+    return usernames.flatMap((username) => {
         const user = usersByUsername.get(username);
 
-        if (user?.id && user.username) {
-            return {
-                id: user.id,
-                username: user.username,
-            };
+        if (!user?.id || !user.username) {
+            return [];
         }
-    }
 
-    return null;
+        return [{
+            id: user.id,
+            username: user.username,
+        }];
+    });
 }
 
-export function applyMentionMarkup(content: string, username?: string | null) {
+export async function resolveFirstMentionedUser(content: string, excludeUserId?: string | null) {
+    const mentions = await resolveMentionedUsers(content, excludeUserId);
+    return mentions[0] ?? null;
+}
+
+export function applyMentionMarkup(content: string, usernames: string[] = []) {
     const normalizedContent = stripMentionAnchors(content);
 
-    if (!username) {
+    if (usernames.length === 0) {
         return normalizedContent;
     }
 
-    const escapedUsername = escapeRegex(username);
-    const mentionLink = `<a href="/users/${encodeURIComponent(username)}" data-mention="true" class="mq-mention">@${username}</a>`;
+    return usernames.reduce((nextContent, username) => {
+        const escapedUsername = escapeRegex(username);
+        const mentionLink = `<a href="/users/${encodeURIComponent(username)}" data-mention="true" class="mq-mention">@${username}</a>`;
 
-    return normalizedContent.replace(
-        new RegExp(`(^|[^\\w])@(${escapedUsername})(?![\\w])`, "i"),
-        (_match, prefix) => `${prefix}${mentionLink}`,
-    );
+        return nextContent.replace(
+            new RegExp(`(^|[^\\w])@(${escapedUsername})(?![\\w])`, "gi"),
+            (_match, prefix) => `${prefix}${mentionLink}`,
+        );
+    }, normalizedContent);
 }
 
 export async function normalizeMentionContent(content: string, excludeUserId?: string | null) {
-    const mention = await resolveFirstMentionedUser(content, excludeUserId);
+    const mentions = await resolveMentionedUsers(content, excludeUserId);
+    const mention = mentions[0] ?? null;
 
     return {
-        content: applyMentionMarkup(content, mention?.username),
+        content: applyMentionMarkup(content, mentions.map((entry) => entry.username)),
         mention,
+        mentions,
+        mentionsAll: hasAllMention(content),
     };
 }

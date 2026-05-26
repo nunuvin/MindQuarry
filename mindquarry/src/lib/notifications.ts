@@ -1,13 +1,13 @@
 import { sql } from "kysely";
 
 import { db } from "./db";
-import { resolveFirstMentionedUser } from "./mentions";
+import { hasAllMention, resolveMentionedUsers } from "./mentions";
 import { generateUUID, getRichTextPreview } from "./utils";
 import { getSiteSettings } from "./settings";
 
-export { extractMentionedUsernames } from "./mentions";
+export { extractMentionedUsernames, hasAllMention } from "./mentions";
 
-type NotificationInsert = {
+export type NotificationInsert = {
     userId: string;
     type: string;
     actorUserId?: string | null;
@@ -19,7 +19,19 @@ type NotificationInsert = {
     answerId?: string | null;
 };
 
-async function insertNotifications(notifications: NotificationInsert[]) {
+async function publishNotificationEvents(userIds: string[]) {
+    const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+
+    if (uniqueUserIds.length === 0) {
+        return;
+    }
+
+    await Promise.all(uniqueUserIds.map((userId) => (
+        sql`select pg_notify('notification_event', ${userId})`.execute(db).catch(() => null)
+    )));
+}
+
+export async function createNotifications(notifications: NotificationInsert[]) {
     if (notifications.length === 0) {
         return;
     }
@@ -38,6 +50,8 @@ async function insertNotifications(notifications: NotificationInsert[]) {
             answer_id: notification.answerId ?? null,
         }))
     ).execute();
+
+    await publishNotificationEvents(notifications.map((notification) => notification.userId));
 }
 
 export async function notifyGlobalAdmins({
@@ -76,7 +90,7 @@ export async function notifyGlobalAdmins({
         recipientIds.delete(actorUserId);
     }
 
-    await insertNotifications(
+    await createNotifications(
         Array.from(recipientIds).map((recipientId) => ({
             userId: recipientId,
             type,
@@ -123,6 +137,8 @@ export async function markAllNotificationsRead(userId: string) {
         .where("user_id", "=", userId)
         .where("is_read", "=", false)
         .execute();
+
+    await publishNotificationEvents([userId]);
 }
 
 async function getInteractedUserIds(queryId: string) {
@@ -185,7 +201,7 @@ export async function notifyQuerySubscribers({
 
     recipientIds.delete(actorUserId);
 
-    await insertNotifications(
+    await createNotifications(
         Array.from(recipientIds).map((recipientId) => ({
             userId: recipientId,
             type: "query_activity",
@@ -214,30 +230,44 @@ export async function notifyMentions({
     queryId?: string;
     answerId?: string;
 }) {
-    const mentionedUser = await resolveFirstMentionedUser(content, actorUserId);
+    const mentionedUsers = await resolveMentionedUsers(content, actorUserId);
+    const mentionsAll = hasAllMention(content);
 
-    if (!mentionedUser?.id || !mentionedUser.username) {
+    if (mentionedUsers.length === 0 && (!mentionsAll || !queryId)) {
         return;
     }
 
-    const mentionedUserRow = await db.selectFrom("user")
-        .leftJoin("profiles", "profiles.user_id", "user.id")
-        .select(["user.id", "user.username", "profiles.mention_notifications"])
-        .where("user.id", "=", mentionedUser.id)
-        .executeTakeFirst();
+    const mentionedUserRows = mentionedUsers.length > 0
+        ? await db.selectFrom("user")
+            .leftJoin("profiles", "profiles.user_id", "user.id")
+            .select(["user.id", "user.username", "profiles.mention_notifications"])
+            .where("user.id", "in", mentionedUsers.map((entry) => entry.id))
+            .execute()
+        : [];
 
-    if (!mentionedUserRow?.id || !mentionedUserRow.username) {
-        return;
-    }
+    const mentionedUserRowsById = new Map(
+        mentionedUserRows
+            .filter((row) => row.id && row.username)
+            .map((row) => [row.id, row]),
+    );
 
     const interactedUsers = queryId ? await getInteractedUserIds(queryId) : new Set<string>();
+    const notifications: NotificationInsert[] = [];
+    const deliveredRecipientIds = new Set<string>();
 
-    if (mentionedUserRow.mention_notifications === "interacted_only" && (!queryId || !interactedUsers.has(mentionedUserRow.id))) {
-        return;
-    }
+    for (const mentionedUser of mentionedUsers) {
+        const mentionedUserRow = mentionedUserRowsById.get(mentionedUser.id);
 
-    await insertNotifications([
-        {
+        if (!mentionedUserRow?.id || !mentionedUserRow.username) {
+            continue;
+        }
+
+        if (mentionedUserRow.mention_notifications === "interacted_only" && (!queryId || !interactedUsers.has(mentionedUserRow.id))) {
+            continue;
+        }
+
+        deliveredRecipientIds.add(mentionedUserRow.id);
+        notifications.push({
             userId: mentionedUserRow.id,
             type: "mention",
             actorUserId,
@@ -247,8 +277,38 @@ export async function notifyMentions({
             href,
             queryId: queryId ?? null,
             answerId: answerId ?? null,
-        },
-    ]);
+        });
+    }
+
+    if (mentionsAll && queryId) {
+        const subscriptions = await db.selectFrom("query_subscriptions")
+            .select("user_id")
+            .where("query_id", "=", queryId)
+            .execute();
+
+        const mentionAllTitle = title.replace(/mentioned you/i, "used @all");
+
+        subscriptions.forEach((subscription) => {
+            if (!subscription.user_id || subscription.user_id === actorUserId || deliveredRecipientIds.has(subscription.user_id)) {
+                return;
+            }
+
+            deliveredRecipientIds.add(subscription.user_id);
+            notifications.push({
+                userId: subscription.user_id,
+                type: "mention_all",
+                actorUserId,
+                sourceId: "all",
+                title: mentionAllTitle,
+                body: getRichTextPreview(content, 120),
+                href,
+                queryId,
+                answerId: answerId ?? null,
+            });
+        });
+    }
+
+    await createNotifications(notifications);
 }
 
 export async function getNotificationPageItems(userId: string) {

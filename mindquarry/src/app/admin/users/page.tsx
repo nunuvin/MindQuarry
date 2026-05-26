@@ -24,8 +24,11 @@ export default async function AdminUsersPage() {
     const isAdmin = await isGlobalAdmin(session.user.id);
     if (!isAdmin) {
         return (
-            <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border rounded shadow">
-                <h1 className="text-2xl font-bold text-red-500">Access Denied</h1>
+            <div className="page-shell max-w-4xl">
+                <section className="soft-panel mt-12 p-6 sm:p-8">
+                    <h1 className="font-display text-2xl font-semibold tracking-tight text-red-500">Access Denied</h1>
+                    <p className="mt-3 text-sm text-muted-foreground">Only instance administrators can manage global admins, moderation policy, or account resets.</p>
+                </section>
             </div>
         );
     }
@@ -205,84 +208,124 @@ export default async function AdminUsersPage() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto mt-12 p-6 bg-card border-[3px] border-black rounded-none shadow-[8px_8px_0_0_#000] dark:border-white dark:shadow-[8px_8px_0_0_#fff]">
-            <h1 className="text-3xl font-black uppercase mb-8 border-b-[3px] border-black dark:border-white pb-2">Global Admins</h1>
-
-            <div className="mb-8 p-6 bg-muted/30 border-2 border-black dark:border-white">
-                <h2 className="font-bold mb-4 uppercase">Add New Admin</h2>
-                <form action={addAdmin} className="flex gap-4">
-                    <input name="username" required placeholder="Exact Username..." className="flex-1 p-2 border-2 border-black dark:border-white bg-card outline-none focus:ring-2 focus:ring-blue-500" />
-                    <button type="submit" className="px-6 py-2 bg-blue-500 text-white font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all cursor-pointer">
-                        Add Admin
-                    </button>
-                </form>
-            </div>
-
-            <div className="space-y-4">
-                {firstAdmin && (
-                    <div className="flex justify-between items-center p-4 border-2 border-black dark:border-white bg-blue-50 dark:bg-blue-950">
-                        <div>
-                            <span className="font-bold text-lg">{firstAdmin.displayUsername || firstAdmin.username || firstAdmin.name}</span>
-                            <span className="ml-2 text-xs uppercase bg-black text-white px-2 py-1 font-bold">Founder / First Admin</span>
-                        </div>
-                        <div className="text-muted-foreground text-sm font-bold uppercase italic">Cannot be removed</div>
+        <div className="page-shell max-w-6xl space-y-8">
+            <section className="soft-panel mt-12 p-6 sm:p-8">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Instance control</p>
+                        <h1 className="font-display mt-2 text-3xl font-semibold tracking-tight">Global admin management</h1>
+                        <p className="mt-3 max-w-2xl text-sm text-muted-foreground">Promote trusted operators, tune instance-wide posting policy, and handle account recovery or removal from one place.</p>
                     </div>
-                )}
-
-                {admins.map(a => (
-                    <div key={a.user_id} className="flex justify-between items-center p-4 border-2 border-black dark:border-white">
-                        <div>
-                            <span className="font-bold text-lg">{a.displayUsername || a.username || a.name}</span>
-                            <span className="ml-2 text-xs uppercase border-2 border-black dark:border-white px-2 py-1 font-bold">Admin</span>
-                        </div>
-                        <form action={removeAdmin}>
-                            <input type="hidden" name="user_id" value={a.user_id} />
-                            <button type="submit" className="px-4 py-2 text-red-500 font-bold border-2 border-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444]">
-                                Remove
-                            </button>
-                        </form>
+                    <div className="rounded-[20px] border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm font-medium text-sky-700 dark:text-sky-300">
+                        {admins.length} active admin{admins.length === 1 ? '' : 's'}
                     </div>
-                ))}
-            </div>
+                </div>
+            </section>
 
-            <div className="mt-10 grid gap-8 border-t-[3px] border-black pt-8 dark:border-white md:grid-cols-2">
-                <div className="p-6 bg-muted/30 border-2 border-black dark:border-white">
-                    <h2 className="font-bold mb-4 uppercase">Instance Posting Policy</h2>
-                    <form action={saveInstancePolicy} className="space-y-4">
-                        <input name="username" placeholder="Exact username or leave blank for default" className="w-full p-2 border-2 border-black dark:border-white bg-card outline-none focus:ring-2 focus:ring-blue-500" />
-                        <select name="review_mode" defaultValue="none" className="w-full p-2 border-2 border-black dark:border-white bg-card outline-none focus:ring-2 focus:ring-blue-500">
+            <section className="soft-panel p-6 sm:p-8">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h2 className="font-display text-2xl font-semibold tracking-tight">Add a new admin</h2>
+                        <p className="mt-2 text-sm text-muted-foreground">Promotions take effect immediately once the username resolves to an existing account.</p>
+                    </div>
+                    <form action={addAdmin} className="flex w-full flex-col gap-3 sm:flex-row lg:max-w-xl">
+                        <input name="username" required placeholder="Exact username" className="h-11 flex-1 rounded-full border border-border/70 bg-card px-4 text-sm outline-none transition focus:border-sky-400/70 focus:ring-4 focus:ring-sky-500/10" />
+                        <button type="submit" className="inline-flex h-11 items-center justify-center rounded-full border border-sky-500/40 bg-sky-500 px-5 text-sm font-semibold text-white transition hover:bg-sky-600 cursor-pointer">
+                            Add Admin
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <section className="soft-panel p-6 sm:p-8">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h2 className="font-display text-2xl font-semibold tracking-tight">Current admins</h2>
+                        <p className="mt-2 text-sm text-muted-foreground">The founder account remains protected, while other global admins can be rotated as needed.</p>
+                    </div>
+                </div>
+
+                <div className="mt-6 space-y-4">
+                    {firstAdmin && (
+                        <article className="rounded-[24px] border border-sky-500/35 bg-sky-500/10 p-5">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-lg font-semibold text-foreground">{firstAdmin.displayUsername || firstAdmin.username || firstAdmin.name}</span>
+                                        <span className="rounded-full border border-sky-500/40 bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Founder</span>
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">This account is pinned as the bootstrap admin in site settings and cannot be removed from here.</p>
+                                </div>
+                                <div className="rounded-full border border-border/70 bg-card px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Protected</div>
+                            </div>
+                        </article>
+                    )}
+
+                    {admins.map(a => (
+                        <article key={a.user_id} className="rounded-[24px] border border-border/70 bg-card/70 p-5 shadow-sm">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-lg font-semibold text-foreground">{a.displayUsername || a.username || a.name}</span>
+                                        <span className="rounded-full border border-border/70 bg-muted/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Admin</span>
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">@{a.username || a.user_id}</p>
+                                </div>
+                                <form action={removeAdmin}>
+                                    <input type="hidden" name="user_id" value={a.user_id} />
+                                    <button type="submit" className="inline-flex h-10 items-center justify-center rounded-full border border-red-500/40 px-4 text-sm font-semibold text-red-600 transition hover:bg-red-500 hover:text-white cursor-pointer">
+                                        Remove
+                                    </button>
+                                </form>
+                            </div>
+                        </article>
+                    ))}
+                </div>
+            </section>
+
+            <div className="grid gap-8 lg:grid-cols-[1.2fr_1fr]">
+                <section className="soft-panel p-6 sm:p-8">
+                    <div className="flex flex-col gap-2">
+                        <h2 className="font-display text-2xl font-semibold tracking-tight">Instance posting policy</h2>
+                        <p className="text-sm text-muted-foreground">Set a default moderation posture or target a specific user with a stricter review mode.</p>
+                    </div>
+
+                    <form action={saveInstancePolicy} className="mt-6 space-y-4">
+                        <input name="username" placeholder="Exact username or leave blank for default" className="h-11 w-full rounded-2xl border border-border/70 bg-card px-4 text-sm outline-none transition focus:border-sky-400/70 focus:ring-4 focus:ring-sky-500/10" />
+                        <select name="review_mode" defaultValue="none" className="h-11 w-full rounded-2xl border border-border/70 bg-card px-4 text-sm outline-none transition focus:border-sky-400/70 focus:ring-4 focus:ring-sky-500/10">
                             <option value="none">No review</option>
                             <option value="query">Review queries only</option>
                             <option value="query_and_answer">Review queries and answers</option>
                         </select>
-                        <label className="flex items-center gap-2 font-semibold"><input type="checkbox" name="can_post_queries" defaultChecked className="h-4 w-4" /> Allow queries</label>
-                        <label className="flex items-center gap-2 font-semibold"><input type="checkbox" name="can_post_answers" defaultChecked className="h-4 w-4" /> Allow answers</label>
-                        <button type="submit" className="px-6 py-2 bg-blue-500 text-white font-bold border-2 border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all cursor-pointer">
+                        <label className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm font-medium text-foreground"><input type="checkbox" name="can_post_queries" defaultChecked className="h-4 w-4 rounded border-border" /> Allow queries</label>
+                        <label className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm font-medium text-foreground"><input type="checkbox" name="can_post_answers" defaultChecked className="h-4 w-4 rounded border-border" /> Allow answers</label>
+                        <button type="submit" className="inline-flex h-11 items-center justify-center rounded-full border border-sky-500/40 bg-sky-500 px-5 text-sm font-semibold text-white transition hover:bg-sky-600 cursor-pointer">
                             Save Policy
                         </button>
                     </form>
+
                     <div className="mt-6 space-y-3 text-sm">
                         {instancePolicies.map((policy) => (
-                            <div key={policy.id} className="border-2 border-black/20 px-3 py-2 dark:border-white/20">
-                                <div className="font-bold">{policy.username || policy.displayUsername || policy.name || "Instance default"}</div>
-                                <div className="text-muted-foreground">Review: {policy.review_mode || "none"} · Queries: {policy.can_post_queries ? "allowed" : "blocked"} · Answers: {policy.can_post_answers ? "allowed" : "blocked"}</div>
-                            </div>
+                            <article key={policy.id} className="rounded-[20px] border border-border/70 bg-card/70 px-4 py-3">
+                                <div className="font-semibold text-foreground">{policy.username || policy.displayUsername || policy.name || "Instance default"}</div>
+                                <div className="mt-1 text-muted-foreground">Review: {policy.review_mode || "none"} · Queries: {policy.can_post_queries ? "allowed" : "blocked"} · Answers: {policy.can_post_answers ? "allowed" : "blocked"}</div>
+                            </article>
                         ))}
                     </div>
-                </div>
+                </section>
 
                 <AdminPasswordResetPanel action={resetUserPassword} />
 
-                <div className="p-6 bg-red-500/5 border-2 border-red-500/40">
-                    <h2 className="font-bold mb-4 uppercase text-red-600">Delete User</h2>
+                <section className="soft-panel border-red-500/30 bg-red-500/5 p-6 sm:p-8 lg:col-start-2">
+                    <h2 className="font-display text-2xl font-semibold tracking-tight text-red-600">Delete user</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">Use this only when an account must be removed entirely. Auth credentials and profile data are deleted, but authored content is preserved under the deleted-user placeholder.</p>
                     <form action={deleteUser} className="space-y-4">
-                        <input name="username" required placeholder="Exact username to delete" className="w-full p-2 border-2 border-red-500 bg-card outline-none focus:ring-2 focus:ring-red-500" />
-                        <p className="text-sm text-muted-foreground">This removes the auth account and profile, while preserving authored content under the deleted-user placeholder.</p>
-                        <button type="submit" className="px-6 py-2 text-red-600 font-bold border-2 border-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444]">
+                        <input name="username" required placeholder="Exact username to delete" className="h-11 w-full rounded-2xl border border-red-500/50 bg-card px-4 text-sm outline-none transition focus:ring-4 focus:ring-red-500/10" />
+                        <button type="submit" className="inline-flex h-11 items-center justify-center rounded-full border border-red-500/50 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-500 hover:text-white cursor-pointer">
                             Delete User Account
                         </button>
                     </form>
-                </div>
+                </section>
             </div>
         </div>
     );

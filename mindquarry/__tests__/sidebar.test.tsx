@@ -31,6 +31,19 @@ describe('Sidebar', () => {
     expect(screen.getByText('Moderation')).toBeInTheDocument()
   })
 
+  it('does not render the removed admin quarry jump panel', () => {
+    render(
+      <Sidebar
+        isGlobalAdmin
+        adminQuarries={[{ id: 'quarry-1', name: 'javascript' }]}
+      />,
+    )
+
+    expect(screen.queryByText('Jump to quarry')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open Queue' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open Settings' })).not.toBeInTheDocument()
+  })
+
   it('starts collapsed when the stored preference is true', () => {
     window.localStorage.setItem('mq.sidebar.collapsed', 'true')
 

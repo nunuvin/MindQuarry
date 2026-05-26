@@ -17,6 +17,10 @@ function createChain<T>(result: T, methods: string[] = ['leftJoin', 'select', 'w
 
 const quarryChain = createChain({ id: 'quarry-1', name: 'javascript', is_invite_only: false }, ['select', 'where'])
 const quarryMembershipChain = createChain({ role: 'admin' }, ['select', 'where'])
+const authorRolesChain = createChain([
+  { user_id: 'user-1', role: 'admin' },
+  { user_id: 'user-2', role: 'moderator' },
+], ['select', 'where'])
 const subscriptionChain = createChain(null, ['select', 'where'])
 const queryChain = createChain({
   id: 'query-1',
@@ -56,7 +60,10 @@ jest.mock('@/lib/db', () => ({
   db: {
     selectFrom: jest.fn((table: string) => {
       if (table === 'quarries') return quarryChain
-      if (table === 'quarry_members') return quarryMembershipChain
+      if (table === 'quarry_members') {
+        const quarryMemberCalls = (jest.requireMock('@/lib/db').db.selectFrom as jest.Mock).mock.calls.filter(([calledTable]: [string]) => calledTable === 'quarry_members').length
+        return quarryMemberCalls === 1 ? quarryMembershipChain : authorRolesChain
+      }
       if (table === 'query_subscriptions') return subscriptionChain
       if (table === 'queries') return queryChain
       if (table === 'answers') return answersChain
@@ -172,5 +179,14 @@ describe('Query discussion page', () => {
     render(Component)
 
     expect(screen.getAllByText('testing').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders quarry role badges for the question and answers', async () => {
+    const Component = await QueryDiscussionPage({ params: Promise.resolve({ name: 'javascript', id: 'query-1' }) })
+
+    render(Component)
+
+    expect(screen.getByText('qadmin')).toBeInTheDocument()
+    expect(screen.getByText('qmod')).toBeInTheDocument()
   })
 })

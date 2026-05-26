@@ -5,8 +5,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { generateUUID } from "@/lib/utils";
-import { refreshProfileMetrics } from "@/lib/notifications";
+import { createNotifications, refreshProfileMetrics } from "@/lib/notifications";
 import { canViewProfile, getProfileVisibility } from "@/lib/visibility";
 import { isGlobalAdmin } from "@/lib/admin";
 
@@ -123,16 +122,15 @@ export default async function UserProfilePage({ params }: { params: Promise<{ us
                 .execute();
         }
 
-        await db.insertInto("notifications").values({
-            id: generateUUID(),
-            user_id: profileUserId,
+        await createNotifications([{
+            userId: profileUserId,
             type: "follow",
-            source_id: session.user.id,
-            actor_user_id: session.user.id,
+            sourceId: session.user.id,
+            actorUserId: session.user.id,
             title: `${session.user.name || "Someone"} followed you`,
             body: `${session.user.name || "Someone"} started following your profile.`,
             href: `/users/${session.user.username || session.user.id}`,
-        }).execute();
+        }]);
     }
 
     return (

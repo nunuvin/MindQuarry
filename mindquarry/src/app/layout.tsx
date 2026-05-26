@@ -46,6 +46,7 @@ export default async function RootLayout({
                     <Navbar
                         notificationBadgeCap={MindQuarryConfig.NOTIFICATIONS.BADGE_CAP}
                         notificationPollIntervalMs={MindQuarryConfig.NOTIFICATIONS.POLL_INTERVAL_MS}
+                        isGlobalAdmin={isGlobalAdmin}
                         quarryRoles={quarryRoles}
                     />
                     <div className="flex flex-1">

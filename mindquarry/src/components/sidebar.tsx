@@ -33,7 +33,6 @@ export default function Sidebar({
     const [isCollapsed, setIsCollapsed] = useState(false);
     const quarryMatch = pathname.match(/^\/q\/([^/]+)/);
     const currentQuarry = quarryMatch ? decodeURIComponent(quarryMatch[1]) : null;
-    const [selectedAdminQuarry, setSelectedAdminQuarry] = useState("");
     const currentAdminQuarry = currentQuarry
         ? adminQuarries.find((quarry) => quarry.name === currentQuarry)
         : null;
@@ -53,17 +52,6 @@ export default function Sidebar({
         const storedValue = window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY);
         setIsCollapsed(storedValue === "true");
     }, []);
-
-    useEffect(() => {
-        if (currentQuarry) {
-            setSelectedAdminQuarry(currentQuarry);
-            return;
-        }
-
-        if (!selectedAdminQuarry && adminQuarries.length > 0) {
-            setSelectedAdminQuarry(adminQuarries[0].name || "");
-        }
-    }, [adminQuarries, currentQuarry, selectedAdminQuarry]);
 
     const toggleSidebar = () => {
         const nextValue = !isCollapsed;
@@ -202,32 +190,6 @@ export default function Sidebar({
                                     );
                                 })}
                             </div>
-                            {!isCollapsed && adminQuarries.length > 0 && (
-                                <div className="mt-4 rounded-[24px] border border-border/70 bg-muted/20 p-4">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Jump to quarry</p>
-                                    <select
-                                        value={selectedAdminQuarry}
-                                        onChange={(event) => setSelectedAdminQuarry(event.target.value)}
-                                        className="mt-3 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm font-medium text-foreground outline-none focus:ring-2 focus:ring-sky-500"
-                                    >
-                                        {adminQuarries.map((quarry) => (
-                                            <option key={quarry.id} value={quarry.name || ""}>
-                                                q/{quarry.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {selectedAdminQuarry && (
-                                        <div className="mt-3 grid grid-cols-2 gap-2">
-                                            <Link href={`/q/${encodeURIComponent(selectedAdminQuarry)}/mod/queue`} className="soft-button justify-center rounded-full px-3 py-2 text-xs">
-                                                Open Queue
-                                            </Link>
-                                            <Link href={`/q/${encodeURIComponent(selectedAdminQuarry)}/settings`} className="soft-button justify-center rounded-full px-3 py-2 text-xs">
-                                                Open Settings
-                                            </Link>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
                         </div>
                     )}
                 </nav>

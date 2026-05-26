@@ -49,6 +49,12 @@ Run one Playwright spec directly:
 npx playwright test e2e/search.spec.ts
 ```
 
+Run the authenticated route smoke directly:
+
+```bash
+npx playwright test e2e/authenticated-routes.spec.ts
+```
+
 Run the complete verification chain:
 
 ```bash
@@ -82,6 +88,7 @@ Use Playwright for:
 - navigation shell behavior
 - route-to-route interactions
 - browser-only behavior that depends on the real app runtime
+- authenticated route smoke once the seeded local test account is available
 
 ## Useful Playwright Commands
 
@@ -106,5 +113,8 @@ npx playwright show-trace path/to/trace.zip
 ## Repo-Specific Notes
 
 - Jest route and auth tests rely on the polyfills configured in `jest.env.ts` and `jest.setup.ts`.
+- Playwright global setup reads `test_user`, `test_password`, and `test_email` from the repository root `.env`. If the account is missing, the setup creates it through Better Auth before saving storage state in `playwright/.auth/user.json`.
+- The local signup page can enforce stronger UI-only password rules than the API bootstrap path. For browser auth coverage, prefer the seeded `.env` account instead of relying on manual signup steps.
 - Playwright may print a Next.js warning if the surrounding shell exports a non-standard `NODE_ENV`. That warning is environmental and does not by itself mean the suite failed.
+- If you extend messaging, mentions, notifications, or admin features, add Jest coverage for the interaction and permission logic first, then add Playwright smoke coverage for the route entry points that expose the same browser behavior.
 - `npm run verify` is the preferred pre-merge check because it catches build issues that Jest alone will miss.

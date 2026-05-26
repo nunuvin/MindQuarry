@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { User as UserIcon, LogOut, Settings, ChevronDown, Bell, MessageSquareMore } from "lucide-react";
+import { User as UserIcon, LogOut, Settings, ChevronDown, Bell, MessageSquareMore, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RoleBadges } from "@/components/role-badges";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import Image from "next/image";
@@ -17,35 +18,15 @@ type UserMenuUser = {
     role?: string | null;
 };
 
-function getRoleBadge(role?: string | null, contextRole?: string | null) {
-    if (contextRole === "admin") {
-        return {
-            shortLabel: "qadmin",
-            longLabel: "Quarry Admin",
-            className: "text-sky-600",
-        };
-    }
-
-    if (contextRole === "moderator") {
-        return {
-            shortLabel: "qmod",
-            longLabel: "Quarry Moderator",
-            className: "text-sky-600",
-        };
-    }
-
-    if (role === "admin") {
-        return {
-            shortLabel: "admin",
-            longLabel: "Instance Admin",
-            className: "text-red-500",
-        };
-    }
-
-    return null;
-}
-
-export default function UserMenu({ user, contextRole }: { user?: UserMenuUser | null; contextRole?: string | null }) {
+export default function UserMenu({
+    user,
+    contextRole,
+    isGlobalAdmin = false,
+}: {
+    user?: UserMenuUser | null;
+    contextRole?: string | null;
+    isGlobalAdmin?: boolean;
+}) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -84,8 +65,6 @@ export default function UserMenu({ user, contextRole }: { user?: UserMenuUser | 
     const username = user.displayUsername || user.username || user.name || user.email || "User";
     const profileSlug = user.username || user.displayUsername || user.email || user.id;
     const profileHref = profileSlug ? `/users/${encodeURIComponent(profileSlug)}` : "/settings";
-    const roleBadge = getRoleBadge(user.role, contextRole);
-
     return (
         <div ref={menuRef} className="relative flex items-center">
             <Link href={profileHref} className="group flex items-center gap-3 rounded-full border border-border/70 bg-card px-2 py-1.5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-400/60 hover:bg-card">
@@ -98,7 +77,9 @@ export default function UserMenu({ user, contextRole }: { user?: UserMenuUser | 
                 </div>
                 <span className="hidden text-sm font-semibold text-foreground sm:block">
                     {username}
-                    {roleBadge && <span className={`ml-2 text-xs ${roleBadge.className}`}>{roleBadge.shortLabel}</span>}
+                    <span className="ml-2 inline-flex align-middle">
+                        <RoleBadges isInstanceAdmin={isGlobalAdmin} quarryRole={contextRole} />
+                    </span>
                 </span>
             </Link>
 
@@ -117,8 +98,15 @@ export default function UserMenu({ user, contextRole }: { user?: UserMenuUser | 
                     <Link href={profileHref} className="border-b border-border/70 px-4 py-4 transition hover:bg-muted/40">
                         <div className="font-semibold">{username}</div>
                         <div className="text-xs text-muted-foreground">{user.email}</div>
-                        {roleBadge && <div className={`text-xs font-bold ${roleBadge.className}`}>{roleBadge.longLabel}</div>}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            <RoleBadges isInstanceAdmin={isGlobalAdmin} quarryRole={contextRole} variant="expanded" />
+                        </div>
                     </Link>
+                    {isGlobalAdmin && (
+                        <Link href="/admin" className="flex items-center gap-2 px-4 py-3 text-sm transition hover:bg-muted/40">
+                            <Shield className="h-4 w-4" /> Instance Admin
+                        </Link>
+                    )}
                     <Link href="/settings" className="flex items-center gap-2 px-4 py-3 text-sm transition hover:bg-muted/40">
                         <Settings className="h-4 w-4" /> Settings
                     </Link>
