@@ -1,6 +1,8 @@
 import {
   extractMentionedUsernames,
+  getNotificationPageItems,
   getUnreadNotificationCount,
+  markAllNotificationsRead,
   notifyMentions,
   notifyQuerySubscribers,
   refreshProfileMetrics,
@@ -122,6 +124,32 @@ describe('notifications helpers', () => {
     await expect(getUnreadNotificationCount('user-1')).resolves.toBe(5)
   })
 
+  it('falls back to zero unread notifications when no row is returned', async () => {
+    const executeTakeFirst = jest.fn().mockResolvedValue(undefined)
+    const whereUnread = jest.fn(() => ({ executeTakeFirst }))
+    const whereUser = jest.fn(() => ({ where: whereUnread }))
+    const select = jest.fn(() => ({ where: whereUser }))
+
+    queueSelectFrom('notifications', () => ({ select }))
+
+    await expect(getUnreadNotificationCount('user-1')).resolves.toBe(0)
+  })
+
+  it('marks all unread notifications as read for a user', async () => {
+    const execute = jest.fn().mockResolvedValue(undefined)
+    const whereUnread = jest.fn(() => ({ execute }))
+    const whereUser = jest.fn(() => ({ where: whereUnread }))
+    const set = jest.fn(() => ({ where: whereUser }))
+
+    updateTableHandlers.set('notifications', () => ({ set }))
+
+    await markAllNotificationsRead('user-1')
+
+    expect(set).toHaveBeenCalledWith({ is_read: true })
+    expect(whereUser).toHaveBeenCalledWith('user_id', '=', 'user-1')
+    expect(whereUnread).toHaveBeenCalledWith('is_read', '=', false)
+  })
+
   it('notifies distinct query subscribers and excludes the actor', async () => {
     const executeSubscriptions = jest.fn().mockResolvedValue([
       { user_id: 'user-1' },
@@ -152,6 +180,31 @@ describe('notifications helpers', () => {
       expect.objectContaining({ user_id: 'user-3', type: 'query_activity', actor_user_id: 'user-1' }),
       expect.objectContaining({ user_id: 'user-4', type: 'query_activity', actor_user_id: 'user-1' }),
     ]))
+  })
+
+  it('skips inserts when query subscriber notifications resolve to no recipients', async () => {
+    const executeSubscriptions = jest.fn().mockResolvedValue([{ user_id: 'user-1' }])
+    const whereQuery = jest.fn(() => ({ execute: executeSubscriptions }))
+    const select = jest.fn(() => ({ where: whereQuery }))
+
+    queueSelectFrom('query_subscriptions', () => ({ select }))
+
+    await expect(notifyQuerySubscribers({
+      queryId: 'query-1',
+      actorUserId: 'user-1',
+      href: '/q/javascript/query/query-1',
+      title: 'Someone replied',
+      body: '<p>Reply body</p>',
+    })).resolves.toBeUndefined()
+  })
+
+  it('returns early when mention content has no usernames', async () => {
+    await expect(notifyMentions({
+      actorUserId: 'user-1',
+      content: '<p>No mentions here</p>',
+      href: '/q/javascript/query/query-1',
+      title: 'Mentioned you',
+    })).resolves.toBeUndefined()
   })
 
   it('only notifies interacted-only mentions when the user participated in the thread', async () => {
@@ -197,6 +250,50 @@ describe('notifications helpers', () => {
       expect.objectContaining({ user_id: 'user-2', type: 'mention' }),
       expect.objectContaining({ user_id: 'user-3', type: 'mention' }),
     ])
+  })
+
+  it('skips interacted-only mention recipients when there is no qualifying interaction context', async () => {
+    const executeMentionedUsers = jest.fn().mockResolvedValue([
+      { id: 'user-2', username: 'bob', mention_notifications: 'interacted_only' },
+      { id: 'user-3', username: 'carol', mention_notifications: 'all' },
+    ])
+    const whereNotActor = jest.fn(() => ({ execute: executeMentionedUsers }))
+    const whereUsernames = jest.fn(() => ({ where: whereNotActor }))
+    const selectMentionedUsers = jest.fn(() => ({ where: whereUsernames }))
+    const leftJoinUsers = jest.fn(() => ({ select: selectMentionedUsers }))
+
+    const executeInsert = jest.fn().mockResolvedValue(undefined)
+    const values = jest.fn(() => ({ execute: executeInsert }))
+
+    queueSelectFrom('user', () => ({ leftJoin: leftJoinUsers }))
+    insertIntoHandlers.set('notifications', () => ({ values }))
+
+    await notifyMentions({
+      actorUserId: 'user-1',
+      content: '<p>Hello @bob and @carol</p>',
+      href: '/q/javascript/query/query-1',
+      title: 'Mentioned you',
+    })
+
+    expect(values).toHaveBeenCalledWith([
+      expect.objectContaining({ user_id: 'user-3', type: 'mention' }),
+    ])
+  })
+
+  it('returns notification page items ordered by most recent activity', async () => {
+    const execute = jest.fn().mockResolvedValue([{ id: 'note-1', title: 'Alert' }])
+    const limit = jest.fn(() => ({ execute }))
+    const orderBy = jest.fn(() => ({ limit }))
+    const where = jest.fn(() => ({ orderBy }))
+    const select = jest.fn(() => ({ where }))
+    const leftJoin = jest.fn(() => ({ select }))
+
+    queueSelectFrom('notifications', () => ({ leftJoin }))
+
+    await expect(getNotificationPageItems('user-1')).resolves.toEqual([{ id: 'note-1', title: 'Alert' }])
+    expect(where).toHaveBeenCalledWith('notifications.user_id', '=', 'user-1')
+    expect(orderBy).toHaveBeenCalledWith('notifications.created_at', 'desc')
+    expect(limit).toHaveBeenCalledWith(50)
   })
 
   it('refreshes profile metrics from the aggregated query and answer totals', async () => {

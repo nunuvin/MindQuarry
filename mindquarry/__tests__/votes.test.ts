@@ -184,6 +184,24 @@ describe('vote helpers', () => {
     expect(refreshProfileMetrics).toHaveBeenCalledWith('author-1')
   })
 
+  it('updates an existing query vote when the user switches direction', async () => {
+    executeTakeFirst
+      .mockResolvedValueOnce({ user_id: 'author-1' })
+      .mockResolvedValueOnce({ value: -1 })
+    queryVoteUpdateExecute.mockResolvedValue(undefined)
+    queryUpdateExecute.mockResolvedValue(undefined)
+    refreshProfileMetrics.mockResolvedValue(undefined)
+
+    await applyQueryVote('query-1', 'user-1', 1)
+
+    expect(trx.updateTable).toHaveBeenCalledWith('query_votes')
+    expect(queryVoteUpdateSet).toHaveBeenCalledWith({ value: 1 })
+    expect(queryVoteUpdateWhereTarget).toHaveBeenCalledWith('query_id', '=', 'query-1')
+    expect(queryVoteUpdateWhereUser).toHaveBeenCalledWith('user_id', '=', 'user-1')
+    expect(queryUpdateSet).toHaveBeenCalledWith({ score: expect.anything() })
+    expect(refreshProfileMetrics).toHaveBeenCalledWith('author-1')
+  })
+
   it('creates a new answer vote and refreshes the answer author metrics', async () => {
     executeTakeFirst
       .mockResolvedValueOnce({ user_id: 'author-2' })
@@ -196,6 +214,23 @@ describe('vote helpers', () => {
 
     expect(trx.insertInto).toHaveBeenCalledWith('answer_votes')
     expect(insertValues).toHaveBeenCalledWith({ answer_id: 'answer-1', user_id: 'user-1', value: 1 })
+    expect(answerUpdateSet).toHaveBeenCalledWith({ score: expect.anything() })
+    expect(refreshProfileMetrics).toHaveBeenCalledWith('author-2')
+  })
+
+  it('removes an existing answer vote when the same value is submitted again', async () => {
+    executeTakeFirst
+      .mockResolvedValueOnce({ user_id: 'author-2' })
+      .mockResolvedValueOnce({ value: 1 })
+    answerDeleteExecute.mockResolvedValue(undefined)
+    answerUpdateExecute.mockResolvedValue(undefined)
+    refreshProfileMetrics.mockResolvedValue(undefined)
+
+    await applyAnswerVote('answer-1', 'user-1', 1)
+
+    expect(trx.deleteFrom).toHaveBeenCalledWith('answer_votes')
+    expect(answerDeleteWhereTarget).toHaveBeenCalledWith('answer_id', '=', 'answer-1')
+    expect(answerDeleteWhereUser).toHaveBeenCalledWith('user_id', '=', 'user-1')
     expect(answerUpdateSet).toHaveBeenCalledWith({ score: expect.anything() })
     expect(refreshProfileMetrics).toHaveBeenCalledWith('author-2')
   })
