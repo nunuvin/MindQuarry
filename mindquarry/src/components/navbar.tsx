@@ -6,19 +6,27 @@ import { authClient } from "@/lib/auth-client";
 import { Input } from "@/components/ui/input";
 import { SearchIcon, CornerDownLeft, Bell } from "lucide-react";
 import UserMenu from "./user-menu";
+import type { QuarryNavigationOption } from "@/lib/quarries";
 
 export default function Navbar({
     notificationBadgeCap,
     notificationPollIntervalMs,
+    quarryRoles = [],
 }: {
     notificationBadgeCap: number;
     notificationPollIntervalMs: number;
+    quarryRoles?: QuarryNavigationOption[];
 }) {
     const { data: session } = authClient.useSession();
     const user = session?.user ?? null;
     const pathname = usePathname();
     const [notificationCount, setNotificationCount] = useState(0);
     const [isSearchFocused, setIsSearchFocused] = useState(false);
+    const quarryMatch = pathname.match(/^\/q\/([^/]+)/);
+    const currentQuarry = quarryMatch ? decodeURIComponent(quarryMatch[1]) : null;
+    const currentQuarryRole = currentQuarry
+        ? quarryRoles.find((quarry) => quarry.name === currentQuarry)?.role || null
+        : null;
 
     useEffect(() => {
         if (!user) {
@@ -94,7 +102,7 @@ export default function Navbar({
                             )}
                         </Link>
                     )}
-                    <UserMenu user={user} />
+                    <UserMenu user={user} contextRole={currentQuarryRole} />
                 </div>
             </div>
 

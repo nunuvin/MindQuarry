@@ -43,6 +43,9 @@ The upgrade path now covers:
 - query and answer validation fields
 - archived-thread fields
 - hidden-message metadata
+- forced-password-reset flags on profiles
+- chat report context sizing in site settings
+- richer `user_reports` metadata for previews, snapshots, and escalation provenance
 - posting policies and moderation indexes
 - newer search/index updates
 

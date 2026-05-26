@@ -6,6 +6,10 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { deleteUserAccount } from "@/lib/accounts";
 import { db } from "@/lib/db";
+import { isRateLimited } from "@/lib/rateLimit";
+import { MindQuarryConfig } from "@/lib/config";
+import { SecurityRateLimits } from "@/lib/security";
+import { PasswordChangePanel, type PasswordChangeActionState } from "./PasswordChangePanel";
 
 export default async function UserSettingsPage() {
     const rawHeaders = await headers();
@@ -67,6 +71,70 @@ export default async function UserSettingsPage() {
         }
 
         redirect("/login");
+    }
+
+    async function changePasswordAction(
+        _previousState: PasswordChangeActionState,
+        formData: FormData,
+    ): Promise<PasswordChangeActionState> {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) {
+            return { status: "error", message: "You must be signed in to change your password." };
+        }
+        if (isRateLimited(session.user.id, "change_password", SecurityRateLimits.PASSWORD_CHANGE_ATTEMPTS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
+            return { status: "error", message: "Password changes are temporarily rate limited. Try again in a moment." };
+        }
+
+        const currentPassword = String(formData.get("current_password") || "");
+        const newPassword = String(formData.get("new_password") || "");
+        const confirmPassword = String(formData.get("confirm_password") || "");
+        const revokeOtherSessions = formData.get("revoke_other_sessions") === "on";
+
+        if (!currentPassword || !newPassword) {
+            return { status: "error", message: "Current and new password are required." };
+        }
+
+        if (newPassword.length < 8) {
+            return { status: "error", message: "New passwords must be at least 8 characters." };
+        }
+
+        if (newPassword !== confirmPassword) {
+            return { status: "error", message: "New password confirmation does not match." };
+        }
+
+        try {
+            await auth.api.changePassword({
+                body: {
+                    currentPassword,
+                    newPassword,
+                    revokeOtherSessions,
+                },
+                headers: rawHeaders,
+            });
+
+            await db.insertInto("profiles")
+                .values({ user_id: session.user.id })
+                .onConflict((oc) => oc.column("user_id").doNothing())
+                .execute();
+
+            await db.updateTable("profiles")
+                .set({
+                    force_password_reset: false,
+                    updated_at: new Date(),
+                })
+                .where("user_id", "=", session.user.id)
+                .execute();
+
+            revalidatePath("/settings");
+            return { status: "success", message: "Password updated." };
+        } catch (error) {
+            return {
+                status: "error",
+                message: error instanceof Error && error.message ? error.message : "Unable to change your password.",
+            };
+        }
     }
 
     return (
@@ -143,9 +211,8 @@ export default async function UserSettingsPage() {
                     </button>
                 </form>
 
-                <div className="mt-10 rounded-[24px] border border-border/70 bg-muted/20 p-6">
-                    <h2 className="font-display text-xl font-semibold tracking-tight">Security</h2>
-                    <p className="mt-3 text-sm leading-7 text-muted-foreground">Password reset belongs here instead of the sign-in page. The UI is reserved here now, but the actual reset flow is still pending implementation.</p>
+                <div className="mt-10">
+                    <PasswordChangePanel action={changePasswordAction} forceResetRequired={Boolean(profile?.force_password_reset)} />
                 </div>
 
                 <div className="mt-10 rounded-[24px] border border-red-500/30 bg-red-500/5 p-6">

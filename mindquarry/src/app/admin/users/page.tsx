@@ -7,6 +7,11 @@ import { deleteUserAccount } from "@/lib/accounts";
 import { isGlobalAdmin } from "@/lib/admin";
 import { listPostingPolicies, upsertPostingPolicy } from "@/lib/moderation";
 import { getSiteSettings } from "@/lib/settings";
+import { isRateLimited } from "@/lib/rateLimit";
+import { generateSecureTemporaryPassword } from "@/lib/passwords";
+import { MindQuarryConfig } from "@/lib/config";
+import { SecurityRateLimits } from "@/lib/security";
+import { AdminPasswordResetPanel, type AdminPasswordResetActionState } from "./AdminPasswordResetPanel";
 
 export default async function AdminUsersPage() {
     const rawHeaders = await headers();
@@ -41,6 +46,7 @@ export default async function AdminUsersPage() {
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user || !(await isGlobalAdmin(session.user.id))) return;
+        if (isRateLimited(session.user.id, "admin_add_global_admin", SecurityRateLimits.ADMIN_MUTATIONS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) return;
 
         const username = formData.get("username") as string;
         if (!username) return;
@@ -60,6 +66,7 @@ export default async function AdminUsersPage() {
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user || !(await isGlobalAdmin(session.user.id))) return;
+        if (isRateLimited(session.user.id, "admin_remove_global_admin", SecurityRateLimits.ADMIN_MUTATIONS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) return;
 
         const userId = formData.get("user_id") as string;
         const settings = await getSiteSettings();
@@ -76,6 +83,7 @@ export default async function AdminUsersPage() {
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user || !(await isGlobalAdmin(session.user.id))) return;
+        if (isRateLimited(session.user.id, "admin_save_instance_policy", SecurityRateLimits.ADMIN_MUTATIONS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) return;
 
         const username = ((formData.get("username") as string) || "").trim();
         const reviewMode = (formData.get("review_mode") as string) || "none";
@@ -106,6 +114,7 @@ export default async function AdminUsersPage() {
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user || !(await isGlobalAdmin(session.user.id))) return;
+        if (isRateLimited(session.user.id, "admin_delete_user", SecurityRateLimits.ADMIN_MUTATIONS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) return;
 
         const username = (formData.get("username") as string) || "";
         if (!username) return;
@@ -124,6 +133,75 @@ export default async function AdminUsersPage() {
         });
 
         revalidatePath("/admin/users");
+    }
+
+    async function resetUserPassword(
+        _previousState: AdminPasswordResetActionState,
+        formData: FormData,
+    ): Promise<AdminPasswordResetActionState> {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user || !(await isGlobalAdmin(session.user.id))) {
+            return { status: "error", message: "Only instance admins can reset passwords." };
+        }
+        if (isRateLimited(session.user.id, "admin_reset_user_password", SecurityRateLimits.ADMIN_MUTATIONS_PER_MIN, MindQuarryConfig.RATE_LIMIT_WINDOW_MS)) {
+            return { status: "error", message: "Password resets are temporarily rate limited. Try again in a moment." };
+        }
+
+        const username = ((formData.get("username") as string) || "").trim();
+        const rawLength = Number(formData.get("password_length"));
+        const passwordLength = Number.isFinite(rawLength) ? rawLength : 16;
+        if (!username) {
+            return { status: "error", message: "Username is required." };
+        }
+
+        const targetUser = await db.selectFrom("user")
+            .select(["id", "username"])
+            .where("username", "=", username)
+            .executeTakeFirst();
+
+        if (!targetUser?.id) {
+            return { status: "error", message: "That user was not found." };
+        }
+
+        const temporaryPassword = generateSecureTemporaryPassword(passwordLength);
+
+        try {
+            await auth.api.setUserPassword({
+                body: {
+                    userId: targetUser.id,
+                    newPassword: temporaryPassword,
+                },
+                headers: rawHeaders,
+            });
+
+            await db.insertInto("profiles")
+                .values({ user_id: targetUser.id })
+                .onConflict((oc) => oc.column("user_id").doNothing())
+                .execute();
+
+            await db.updateTable("profiles")
+                .set({
+                    force_password_reset: true,
+                    updated_at: new Date(),
+                })
+                .where("user_id", "=", targetUser.id)
+                .execute();
+
+            revalidatePath("/admin/users");
+            return {
+                status: "success",
+                message: "Temporary password generated. Share it securely with the user.",
+                temporaryPassword,
+                targetUsername: targetUser.username || username,
+            };
+        } catch (error) {
+            return {
+                status: "error",
+                message: error instanceof Error && error.message ? error.message : "Unable to reset that password.",
+            };
+        }
     }
 
     return (
@@ -192,6 +270,8 @@ export default async function AdminUsersPage() {
                         ))}
                     </div>
                 </div>
+
+                <AdminPasswordResetPanel action={resetUserPassword} />
 
                 <div className="p-6 bg-red-500/5 border-2 border-red-500/40">
                     <h2 className="font-bold mb-4 uppercase text-red-600">Delete User</h2>

@@ -49,6 +49,10 @@ jest.mock('@/lib/visibility', () => ({
   canViewQuarry: jest.fn().mockResolvedValue({ allowed: true }),
 }))
 
+jest.mock('@/lib/admin', () => ({
+  isGlobalAdmin: jest.fn().mockResolvedValue(false),
+}))
+
 jest.mock('@/lib/tags', () => ({
   getAvailableTagsForQuarry: (...args: unknown[]) => getAvailableTagsForQuarry(...args),
   assignTagsToQuery: jest.fn(),

@@ -10,6 +10,7 @@ import { hasRichTextContent } from "@/lib/utils";
 import { MindQuarryConfig } from "@/lib/config";
 import { deleteMessageBySender, hideMessage } from "@/lib/content";
 import { isGlobalAdmin } from "@/lib/admin";
+import { normalizeMentionContent } from "@/lib/mentions";
 
 type SendMessageResult = {
     ok: boolean;
@@ -104,13 +105,15 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
             return { ok: false, error: "Message cannot be empty." };
         }
 
+        const normalizedBody = (await normalizeMentionContent(body, session.user.id)).content;
+
         try {
             await db.transaction().execute(async (trx) => {
                 await trx.insertInto("messages").values({
                     id: generateUUID(),
                     conversation_id: resolvedParams.id,
                     sender_id: session.user.id,
-                    body
+                    body: normalizedBody,
                 }).execute();
 
                 await trx.updateTable("conversations").set({ updated_at: new Date() }).where("id", "=", resolvedParams.id).execute();

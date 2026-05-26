@@ -17,7 +17,35 @@ type UserMenuUser = {
     role?: string | null;
 };
 
-export default function UserMenu({ user }: { user?: UserMenuUser | null }) {
+function getRoleBadge(role?: string | null, contextRole?: string | null) {
+    if (contextRole === "admin") {
+        return {
+            shortLabel: "qadmin",
+            longLabel: "Quarry Admin",
+            className: "text-sky-600",
+        };
+    }
+
+    if (contextRole === "moderator") {
+        return {
+            shortLabel: "qmod",
+            longLabel: "Quarry Moderator",
+            className: "text-sky-600",
+        };
+    }
+
+    if (role === "admin") {
+        return {
+            shortLabel: "admin",
+            longLabel: "Instance Admin",
+            className: "text-red-500",
+        };
+    }
+
+    return null;
+}
+
+export default function UserMenu({ user, contextRole }: { user?: UserMenuUser | null; contextRole?: string | null }) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -56,6 +84,7 @@ export default function UserMenu({ user }: { user?: UserMenuUser | null }) {
     const username = user.displayUsername || user.username || user.name || user.email || "User";
     const profileSlug = user.username || user.displayUsername || user.email || user.id;
     const profileHref = profileSlug ? `/users/${encodeURIComponent(profileSlug)}` : "/settings";
+    const roleBadge = getRoleBadge(user.role, contextRole);
 
     return (
         <div ref={menuRef} className="relative flex items-center">
@@ -69,7 +98,7 @@ export default function UserMenu({ user }: { user?: UserMenuUser | null }) {
                 </div>
                 <span className="hidden text-sm font-semibold text-foreground sm:block">
                     {username}
-                    {user.role === 'admin' && <span className="ml-2 text-xs text-red-500">admin</span>}
+                    {roleBadge && <span className={`ml-2 text-xs ${roleBadge.className}`}>{roleBadge.shortLabel}</span>}
                 </span>
             </Link>
 
@@ -88,7 +117,7 @@ export default function UserMenu({ user }: { user?: UserMenuUser | null }) {
                     <Link href={profileHref} className="border-b border-border/70 px-4 py-4 transition hover:bg-muted/40">
                         <div className="font-semibold">{username}</div>
                         <div className="text-xs text-muted-foreground">{user.email}</div>
-                        {user.role === 'admin' && <div className="text-xs text-red-500 font-bold">Admin</div>}
+                        {roleBadge && <div className={`text-xs font-bold ${roleBadge.className}`}>{roleBadge.longLabel}</div>}
                     </Link>
                     <Link href="/settings" className="flex items-center gap-2 px-4 py-3 text-sm transition hover:bg-muted/40">
                         <Settings className="h-4 w-4" /> Settings

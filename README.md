@@ -16,7 +16,7 @@ MindQuarry is built around topical communities and discussion threads:
 - Profiles and communities support visibility controls, so some content is public, some is authenticated-only, and some is membership-scoped.
 - Messaging supports inbox, group conversations, read state, streaming updates, soft-deleted message tombstones, and admin moderation.
 - Quarry admins and moderators can work pending-review queues, hide content, review moderation history, and apply per-user posting restrictions.
-- Instance admins can manage users, search across admin-only content, and navigate directly into quarry moderation flows.
+- Instance admins can manage users, search across admin-only content, issue temporary passwords that force a password change on next login, and navigate directly into quarry moderation flows.
 
 ## Current Feature Set
 
@@ -30,7 +30,9 @@ The product already includes:
 - Query and answer voting, accepted answers, and per-thread subscriptions.
 - Follows, mentions, notifications, unread counts, and profile metrics.
 - Profile visibility and messaging privacy controls.
+- Self-service password change in settings, plus admin-issued temporary passwords with forced password rotation on next sign-in.
 - Direct messaging, group chats, read receipts, and event-driven refresh behavior.
+- Query, answer, chat-message, and whole-conversation reporting, with quarry-to-instance escalation support and stored moderation context.
 - Account self-deletion with authored content reassigned to the deleted-user sentinel instead of being orphaned.
 - Quarry moderation roles for admins and moderators.
 - Quarry and instance posting policies, including forced review and posting restrictions.
@@ -40,7 +42,7 @@ The product already includes:
 
 Still partial or intentionally pending:
 
-- Password reset and broader account recovery.
+- Full self-service forgotten-password recovery outside the current authenticated change-password and admin-issued temporary reset flows.
 - Deeper moderation analytics and longer-term audit tooling.
 - More exhaustive automated coverage across all page states and workflows.
 - More advanced search ranking and richer tag/discovery tuning.
@@ -111,7 +113,7 @@ If the database already exists, apply the additive update script instead of repl
 psql -U your_postgres_user -d mindquarry_db -f postgres/psql_update.sql
 ```
 
-That upgrade path now covers deleted-user support, moderation and posting-policy schema, validation/archive fields, hidden-message metadata, and search-related index updates.
+That upgrade path now covers deleted-user support, moderation and posting-policy schema, validation/archive fields, hidden-message metadata, forced-password-reset flags, chat report context sizing, richer report metadata, and search-related index updates.
 
 ## Testing And Verification
 

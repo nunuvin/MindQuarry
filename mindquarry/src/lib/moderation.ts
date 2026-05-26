@@ -74,12 +74,12 @@ export async function getQuarryMembershipRole(quarryId: string, userId: string) 
     return membership?.role || null;
 }
 
-export function canAdministerQuarry(role: string | null | undefined) {
-    return role === "admin";
+export function canAdministerQuarry(role: string | null | undefined, viewerIsGlobalAdmin = false) {
+    return viewerIsGlobalAdmin || role === "admin";
 }
 
-export function canModerateQuarry(role: string | null | undefined) {
-    return role === "admin" || role === "moderator";
+export function canModerateQuarry(role: string | null | undefined, viewerIsGlobalAdmin = false) {
+    return viewerIsGlobalAdmin || role === "admin" || role === "moderator";
 }
 
 export function shouldReviewQuery(policy: ResolvedPostingPolicy) {

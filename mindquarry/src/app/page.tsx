@@ -9,10 +9,12 @@ import { MindQuarryConfig } from "@/lib/config";
 import { getRichTextPreview } from "@/lib/utils";
 import { applyQueryVote } from "@/lib/votes";
 import { revalidatePath } from "next/cache";
+import { isGlobalAdmin } from "@/lib/admin";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
     const rawHeaders = await headers();
     const session = await auth.api.getSession({ headers: rawHeaders });
+    const viewerIsGlobalAdmin = session?.user?.id ? await isGlobalAdmin(session.user.id) : false;
     const resolvedParams = await searchParams;
     const sort = resolvedParams.sort === "top" ? "top" : "new";
     const feedFollowingLimit = MindQuarryConfig.FORUM.FEED_FOLLOWING_LIMIT;
@@ -94,7 +96,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                                 <Link href={`/q/${fq.quarry_name}/query/${fq.id}`} key={fq.id} className="soft-card snap-start w-[290px] shrink-0 p-5">
                                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-400">q/{fq.quarry_name}</div>
                                     <h3 className="mt-3 text-lg font-semibold leading-tight text-balance">{fq.title}</h3>
-                                    <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{getRichTextPreview(fq.body || "", 120) || "No details provided."}</p>
+                                    {getRichTextPreview(fq.body || "", 120) && <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{getRichTextPreview(fq.body || "", 120)}</p>}
                                     <div className="mt-4 text-xs font-semibold text-muted-foreground">By {fq.displayUsername || fq.username || fq.name}</div>
                                 </Link>
                             ))}
@@ -141,9 +143,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                                     <Link href={`/q/${q.quarry_name}/query/${q.id}`} className="mt-2 block text-xl font-semibold leading-tight text-balance hover:text-sky-600">
                                         {q.title}
                                     </Link>
-                                    <p className="mt-3 line-clamp-3 break-words text-sm leading-7 text-muted-foreground">
-                                        {getRichTextPreview(q.body || "") || "No details provided."}
-                                    </p>
+                                    {getRichTextPreview(q.body || "") && (
+                                        <p className="mt-3 line-clamp-3 break-words text-sm leading-7 text-muted-foreground">
+                                            {getRichTextPreview(q.body || "")}
+                                        </p>
+                                    )}
                                     <div className="mt-4 flex flex-col gap-2 border-t border-border/70 pt-3 text-xs font-semibold text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                                         <span>{q.views} views</span>
                                         <span>Asked by {q.displayUsername || q.username || q.name} on {q.created_at ? new Date(q.created_at).toLocaleDateString() : ''}</span>
@@ -161,7 +165,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                 </section>
             </div>
 
-            <HomeInfoRail />
+            <HomeInfoRail showInstanceAdminLink={viewerIsGlobalAdmin} />
         </div>
     );
 }

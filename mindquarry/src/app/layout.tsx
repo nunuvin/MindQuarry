@@ -6,10 +6,10 @@ import Sidebar from "@/components/sidebar";
 import CookieNotice from "@/components/cookie-notice";
 import ThemeProvider from "@/components/theme-provider";
 import { MindQuarryConfig } from "@/lib/config";
-import { getSiteSettings } from "@/lib/settings";
 import { listQuarryNavigationOptions } from "@/lib/quarries";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { isGlobalAdmin as getIsGlobalAdmin } from "@/lib/admin";
 
 const bodyFont = Manrope({ subsets: ["latin"], variable: "--font-body" });
 const displayFont = Space_Grotesk({ subsets: ["latin"], variable: "--font-display" });
@@ -26,9 +26,13 @@ export default async function RootLayout({
 }>) {
     const rawHeaders = await headers();
     const session = await auth.api.getSession({ headers: rawHeaders });
-    const settings = await getSiteSettings();
-    const isGlobalAdmin = session?.user?.id === settings?.first_admin_user_id;
-    const adminQuarries = isGlobalAdmin ? await listQuarryNavigationOptions() : [];
+    const isGlobalAdmin = session?.user?.id ? await getIsGlobalAdmin(session.user.id) : false;
+    const quarryRoles = session?.user?.id
+        ? await listQuarryNavigationOptions({ userId: session.user.id })
+        : [];
+    const adminQuarries = session?.user?.id
+        ? await listQuarryNavigationOptions({ userId: session.user.id, viewerIsGlobalAdmin: isGlobalAdmin })
+        : [];
 
     return (
         <html lang="en" suppressHydrationWarning className={`${bodyFont.variable} ${displayFont.variable}`}>
@@ -42,6 +46,7 @@ export default async function RootLayout({
                     <Navbar
                         notificationBadgeCap={MindQuarryConfig.NOTIFICATIONS.BADGE_CAP}
                         notificationPollIntervalMs={MindQuarryConfig.NOTIFICATIONS.POLL_INTERVAL_MS}
+                        quarryRoles={quarryRoles}
                     />
                     <div className="flex flex-1">
                         <Sidebar isGlobalAdmin={isGlobalAdmin} adminQuarries={adminQuarries} />

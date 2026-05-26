@@ -435,8 +435,13 @@ async function searchQuarries(term: string, offset: number, limit: number, viewe
                 buildQuarryMembershipExpression(viewerId).as("viewer_is_member"),
             ])
             .where(buildQuarryAccessCondition(viewerId, viewerIsGlobalAdmin))
-            .where(sql<boolean>`${sql.ref("quarries.name")} % ${term}`)
-            .orderBy(sql`${sql.ref("quarries.name")} <-> ${term}`)
+            .where(sql<boolean>`unaccent(lower(coalesce(${sql.ref("quarries.name")}, ''))) like unaccent(lower(${`%${term}%`}))`)
+            .orderBy(sql<boolean>`unaccent(lower(coalesce(${sql.ref("quarries.name")}, ''))) like unaccent(lower(${`${term}%`}))`, "desc")
+            .orderBy(sql`greatest(
+                similarity(lower(coalesce(${sql.ref("quarries.name")}, '')), lower(${term})),
+                similarity(lower(coalesce(${sql.ref("quarries.description")}, '')), lower(${term}))
+            )`, "desc")
+            .orderBy("quarries.name", "asc")
             .offset(offset)
             .limit(limit + 1)
             .execute();

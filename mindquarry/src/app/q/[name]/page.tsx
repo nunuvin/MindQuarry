@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { canViewQuarry, getQuarryVisibility } from "@/lib/visibility";
 import { getQueryTagMap } from "@/lib/tags";
 import { canAdministerQuarry, canModerateQuarry } from "@/lib/moderation";
+import { isGlobalAdmin } from "@/lib/admin";
 
 export default async function QuarryPage({
     params,
@@ -21,6 +22,7 @@ export default async function QuarryPage({
 }) {
     const rawHeaders = await headers();
     const session = await auth.api.getSession({ headers: rawHeaders });
+    const viewerIsGlobalAdmin = session?.user?.id ? await isGlobalAdmin(session.user.id) : false;
 
     const resolvedParams = await params;
     const resolvedSearchParams = await searchParams;
@@ -38,10 +40,10 @@ export default async function QuarryPage({
             .executeTakeFirst()
         : null;
     const quarryRole = membership?.role || null;
-    const isQuarryAdmin = canAdministerQuarry(quarryRole);
-    const canModerate = canModerateQuarry(quarryRole);
+    const isQuarryAdmin = canAdministerQuarry(quarryRole, viewerIsGlobalAdmin);
+    const canModerate = canModerateQuarry(quarryRole, viewerIsGlobalAdmin);
 
-    const access = await canViewQuarry(quarry, session?.user?.id);
+    const access = await canViewQuarry(quarry, session?.user?.id, viewerIsGlobalAdmin);
     if (!access.allowed) {
         if (!session?.user) {
             redirect("/login");
@@ -171,9 +173,11 @@ export default async function QuarryPage({
                                     ))}
                                 </div>
                             )}
-                            <p className="mt-3 line-clamp-3 break-words text-sm leading-7 text-muted-foreground">
-                                {getRichTextPreview(q.body || q.first_answer_body || "") || "No details provided."}
-                            </p>
+                            {getRichTextPreview(q.body || q.first_answer_body || "") && (
+                                <p className="mt-3 line-clamp-3 break-words text-sm leading-7 text-muted-foreground">
+                                    {getRichTextPreview(q.body || q.first_answer_body || "")}
+                                </p>
+                            )}
                             <div className="mt-4 flex flex-col gap-2 border-t border-border/70 pt-3 text-xs font-semibold text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                                 <span>{q.views} views</span>
                                 <span>Asked by {q.displayUsername || q.username || q.name} on {q.created_at ? new Date(q.created_at).toLocaleDateString() : ''}</span>

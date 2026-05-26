@@ -208,14 +208,22 @@ describe('notifications helpers', () => {
   })
 
   it('only notifies interacted-only mentions when the user participated in the thread', async () => {
-    const executeMentionedUsers = jest.fn().mockResolvedValue([
+    const executeResolvedMentionedUsers = jest.fn().mockResolvedValue([
       { id: 'user-2', username: 'bob', mention_notifications: 'interacted_only' },
       { id: 'user-3', username: 'carol', mention_notifications: 'all' },
     ])
-    const whereNotActor = jest.fn(() => ({ execute: executeMentionedUsers }))
+    const whereNotActor = jest.fn(() => ({ execute: executeResolvedMentionedUsers }))
     const whereUsernames = jest.fn(() => ({ where: whereNotActor }))
-    const selectMentionedUsers = jest.fn(() => ({ where: whereUsernames }))
-    const leftJoinUsers = jest.fn(() => ({ select: selectMentionedUsers }))
+    const selectResolvedMentionedUsers = jest.fn(() => ({ where: whereUsernames }))
+
+    const executeTakeFirstMentionedUser = jest.fn().mockResolvedValue({
+      id: 'user-2',
+      username: 'bob',
+      mention_notifications: 'interacted_only',
+    })
+    const whereMentionedUserId = jest.fn(() => ({ executeTakeFirst: executeTakeFirstMentionedUser }))
+    const selectMentionedUser = jest.fn(() => ({ where: whereMentionedUserId }))
+    const leftJoinUsers = jest.fn(() => ({ select: selectMentionedUser }))
 
     const executeQueryAuthor = jest.fn().mockResolvedValue({ user_id: 'user-2' })
     const whereQueryId = jest.fn(() => ({ executeTakeFirst: executeQueryAuthor }))
@@ -232,6 +240,7 @@ describe('notifications helpers', () => {
     const executeInsert = jest.fn().mockResolvedValue(undefined)
     const values = jest.fn(() => ({ execute: executeInsert }))
 
+    queueSelectFrom('user', () => ({ select: selectResolvedMentionedUsers }))
     queueSelectFrom('user', () => ({ leftJoin: leftJoinUsers }))
     queueSelectFrom('queries', () => ({ select: selectQueryAuthor }))
     queueSelectFrom('answers', () => ({ select: selectAnswerAuthors }))
@@ -248,23 +257,31 @@ describe('notifications helpers', () => {
 
     expect(values).toHaveBeenCalledWith([
       expect.objectContaining({ user_id: 'user-2', type: 'mention' }),
-      expect.objectContaining({ user_id: 'user-3', type: 'mention' }),
     ])
   })
 
   it('skips interacted-only mention recipients when there is no qualifying interaction context', async () => {
-    const executeMentionedUsers = jest.fn().mockResolvedValue([
+    const executeResolvedMentionedUsers = jest.fn().mockResolvedValue([
       { id: 'user-2', username: 'bob', mention_notifications: 'interacted_only' },
       { id: 'user-3', username: 'carol', mention_notifications: 'all' },
     ])
-    const whereNotActor = jest.fn(() => ({ execute: executeMentionedUsers }))
+    const whereNotActor = jest.fn(() => ({ execute: executeResolvedMentionedUsers }))
     const whereUsernames = jest.fn(() => ({ where: whereNotActor }))
-    const selectMentionedUsers = jest.fn(() => ({ where: whereUsernames }))
-    const leftJoinUsers = jest.fn(() => ({ select: selectMentionedUsers }))
+    const selectResolvedMentionedUsers = jest.fn(() => ({ where: whereUsernames }))
+
+    const executeTakeFirstMentionedUser = jest.fn().mockResolvedValue({
+      id: 'user-2',
+      username: 'bob',
+      mention_notifications: 'interacted_only',
+    })
+    const whereMentionedUserId = jest.fn(() => ({ executeTakeFirst: executeTakeFirstMentionedUser }))
+    const selectMentionedUser = jest.fn(() => ({ where: whereMentionedUserId }))
+    const leftJoinUsers = jest.fn(() => ({ select: selectMentionedUser }))
 
     const executeInsert = jest.fn().mockResolvedValue(undefined)
     const values = jest.fn(() => ({ execute: executeInsert }))
 
+    queueSelectFrom('user', () => ({ select: selectResolvedMentionedUsers }))
     queueSelectFrom('user', () => ({ leftJoin: leftJoinUsers }))
     insertIntoHandlers.set('notifications', () => ({ values }))
 
@@ -275,9 +292,7 @@ describe('notifications helpers', () => {
       title: 'Mentioned you',
     })
 
-    expect(values).toHaveBeenCalledWith([
-      expect.objectContaining({ user_id: 'user-3', type: 'mention' }),
-    ])
+    expect(values).not.toHaveBeenCalled()
   })
 
   it('returns notification page items ordered by most recent activity', async () => {

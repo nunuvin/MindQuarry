@@ -1,9 +1,11 @@
 import { sql } from "kysely";
 
 import { db } from "./db";
-import { generateUUID, getRichTextPreview, richTextToPlainText } from "./utils";
+import { resolveFirstMentionedUser } from "./mentions";
+import { generateUUID, getRichTextPreview } from "./utils";
+import { getSiteSettings } from "./settings";
 
-const mentionPattern = /(^|[\s(])@([a-zA-Z0-9_]+)/g;
+export { extractMentionedUsernames } from "./mentions";
 
 type NotificationInsert = {
     userId: string;
@@ -16,21 +18,6 @@ type NotificationInsert = {
     queryId?: string | null;
     answerId?: string | null;
 };
-
-export function extractMentionedUsernames(content: string) {
-    const plainText = richTextToPlainText(content);
-    const usernames = new Set<string>();
-
-    for (const match of plainText.matchAll(mentionPattern)) {
-        const username = match[2]?.trim().toLowerCase();
-
-        if (username) {
-            usernames.add(username);
-        }
-    }
-
-    return Array.from(usernames);
-}
 
 async function insertNotifications(notifications: NotificationInsert[]) {
     if (notifications.length === 0) {
@@ -51,6 +38,55 @@ async function insertNotifications(notifications: NotificationInsert[]) {
             answer_id: notification.answerId ?? null,
         }))
     ).execute();
+}
+
+export async function notifyGlobalAdmins({
+    actorUserId,
+    title,
+    body,
+    href,
+    type = "admin_alert",
+    sourceId,
+}: {
+    actorUserId?: string | null;
+    title: string;
+    body?: string | null;
+    href?: string | null;
+    type?: string;
+    sourceId?: string | null;
+}) {
+    const [settings, adminRows] = await Promise.all([
+        getSiteSettings(),
+        db.selectFrom("global_admins").select("user_id").execute(),
+    ]);
+
+    const recipientIds = new Set<string>();
+
+    if (settings?.first_admin_user_id) {
+        recipientIds.add(settings.first_admin_user_id);
+    }
+
+    adminRows.forEach((row) => {
+        if (row.user_id) {
+            recipientIds.add(row.user_id);
+        }
+    });
+
+    if (actorUserId) {
+        recipientIds.delete(actorUserId);
+    }
+
+    await insertNotifications(
+        Array.from(recipientIds).map((recipientId) => ({
+            userId: recipientId,
+            type,
+            actorUserId: actorUserId ?? null,
+            sourceId: sourceId ?? null,
+            title,
+            body: body ?? null,
+            href: href ?? null,
+        }))
+    );
 }
 
 export async function subscribeUserToQuery(queryId: string, userId: string, reason: "author" | "answer" | "manual" = "manual") {
@@ -178,42 +214,41 @@ export async function notifyMentions({
     queryId?: string;
     answerId?: string;
 }) {
-    const usernames = extractMentionedUsernames(content);
+    const mentionedUser = await resolveFirstMentionedUser(content, actorUserId);
 
-    if (usernames.length === 0) {
+    if (!mentionedUser?.id || !mentionedUser.username) {
         return;
     }
 
-    const mentionedUsers = await db.selectFrom("user")
+    const mentionedUserRow = await db.selectFrom("user")
         .leftJoin("profiles", "profiles.user_id", "user.id")
         .select(["user.id", "user.username", "profiles.mention_notifications"])
-        .where("user.username", "in", usernames)
-        .where("user.id", "!=", actorUserId)
-        .execute();
+        .where("user.id", "=", mentionedUser.id)
+        .executeTakeFirst();
+
+    if (!mentionedUserRow?.id || !mentionedUserRow.username) {
+        return;
+    }
 
     const interactedUsers = queryId ? await getInteractedUserIds(queryId) : new Set<string>();
 
-    const notifications = mentionedUsers
-        .filter((user) => {
-            if (user.mention_notifications === "interacted_only") {
-                return queryId ? interactedUsers.has(user.id) : false;
-            }
+    if (mentionedUserRow.mention_notifications === "interacted_only" && (!queryId || !interactedUsers.has(mentionedUserRow.id))) {
+        return;
+    }
 
-            return true;
-        })
-        .map((user) => ({
-            userId: user.id,
+    await insertNotifications([
+        {
+            userId: mentionedUserRow.id,
             type: "mention",
             actorUserId,
-            sourceId: user.username ?? null,
+            sourceId: mentionedUserRow.username,
             title,
             body: getRichTextPreview(content, 120),
             href,
             queryId: queryId ?? null,
             answerId: answerId ?? null,
-        }));
-
-    await insertNotifications(notifications);
+        },
+    ]);
 }
 
 export async function getNotificationPageItems(userId: string) {

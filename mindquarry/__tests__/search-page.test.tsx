@@ -1,6 +1,23 @@
 import { render, screen } from '@testing-library/react'
 
 import SearchPage from '@/app/search/page'
+
+jest.mock('@/lib/auth', () => ({
+  auth: {
+    api: {
+      getSession: jest.fn().mockResolvedValue(null),
+    },
+  },
+}))
+
+jest.mock('@/lib/votes', () => ({
+  applyQueryVote: jest.fn(),
+}))
+
+jest.mock('next/headers', () => ({
+  headers: () => new Map(),
+}))
+
 jest.mock('@/app/search/SearchResultsClient', () => ({
   SearchResultsClient: ({ initialQuery }: { initialQuery: string }) => <div>Results payload: {initialQuery || 'empty'}</div>,
 }))

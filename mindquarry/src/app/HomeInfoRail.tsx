@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 
 const HOME_INFO_DISMISS_KEY = "mq.home.info.dismissed";
 
-export default function HomeInfoRail() {
+export default function HomeInfoRail({ showInstanceAdminLink = false }: { showInstanceAdminLink?: boolean }) {
     const [dismissed, setDismissed] = useState(false);
 
     useEffect(() => {
@@ -58,6 +58,11 @@ export default function HomeInfoRail() {
                 <Link href="/q" className="soft-button-primary mt-6 w-full justify-center py-3">
                     Explore Quarries
                 </Link>
+                {showInstanceAdminLink && (
+                    <Link href="/admin" className="soft-button mt-3 w-full justify-center py-3">
+                        Open Instance Admin
+                    </Link>
+                )}
             </section>
         </aside>
     );

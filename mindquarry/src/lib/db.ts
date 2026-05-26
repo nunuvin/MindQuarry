@@ -75,6 +75,7 @@ interface ProfilesTable {
     profile_visibility: string | null;
     messaging_privacy: string | null;
     mention_notifications: string | null;
+    force_password_reset: boolean | null;
     created_at: Date | null;
     updated_at: Date | null;
 }
@@ -108,6 +109,7 @@ interface SiteSettingsTable {
     global_ban_template: string | null;
     first_admin_user_id: string | null;
     simplified_mode_enabled: boolean | null;
+    chat_report_context_size: number | null;
 }
 
 interface QuarriesTable {
@@ -275,9 +277,15 @@ interface UserReportsTable {
     quarry_id: string | null;
     target_type: string | null;
     target_id: string | null;
+    conversation_id: string | null;
     reporter_id: string | null;
     reported_id: string | null;
     reason: string | null;
+    target_preview: string | null;
+    context_snapshot: string | null;
+    context_size: number | null;
+    escalated_by_id: string | null;
+    escalated_from_quarry_id: string | null;
     status: string | null;
     created_at: Date | null;
 }

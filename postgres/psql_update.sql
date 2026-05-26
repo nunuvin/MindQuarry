@@ -63,11 +63,13 @@ CREATE TABLE IF NOT EXISTS mq_public.background_jobs (
 );
 
 ALTER TABLE mq_public.site_settings
-    ADD COLUMN IF NOT EXISTS global_ban_template TEXT DEFAULT 'Your account has been suspended for violating platform rules.';
+    ADD COLUMN IF NOT EXISTS global_ban_template TEXT DEFAULT 'Your account has been suspended for violating platform rules.',
+    ADD COLUMN IF NOT EXISTS chat_report_context_size INTEGER DEFAULT 100;
 
 ALTER TABLE mq_public.profiles
     ADD COLUMN IF NOT EXISTS profile_visibility VARCHAR(50) DEFAULT 'public',
-    ADD COLUMN IF NOT EXISTS mention_notifications VARCHAR(50) DEFAULT 'all';
+    ADD COLUMN IF NOT EXISTS mention_notifications VARCHAR(50) DEFAULT 'all',
+    ADD COLUMN IF NOT EXISTS force_password_reset BOOLEAN DEFAULT false;
 
 ALTER TABLE mq_public.quarries
     ADD COLUMN IF NOT EXISTS visibility VARCHAR(50) DEFAULT 'public',
@@ -103,6 +105,14 @@ ALTER TABLE mq_public.notifications
     ADD COLUMN IF NOT EXISTS href TEXT,
     ADD COLUMN IF NOT EXISTS query_id UUID,
     ADD COLUMN IF NOT EXISTS answer_id UUID;
+
+ALTER TABLE mq_public.user_reports
+    ADD COLUMN IF NOT EXISTS conversation_id UUID REFERENCES mq_public.conversations(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS target_preview TEXT,
+    ADD COLUMN IF NOT EXISTS context_snapshot TEXT,
+    ADD COLUMN IF NOT EXISTS context_size INTEGER,
+    ADD COLUMN IF NOT EXISTS escalated_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS escalated_from_quarry_id UUID REFERENCES mq_public.quarries(id) ON DELETE SET NULL;
 
 ALTER TABLE mq_public.tags
     ADD COLUMN IF NOT EXISTS description TEXT,

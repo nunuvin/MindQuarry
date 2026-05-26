@@ -15,8 +15,16 @@ export function getQuarryVisibility(quarry: { visibility?: string | null; is_inv
     return "public" satisfies QuarryVisibility;
 }
 
-export async function canViewQuarry(quarry: { id: string; visibility?: string | null; is_invite_only?: boolean | null }, viewerId?: string) {
+export async function canViewQuarry(
+    quarry: { id: string; visibility?: string | null; is_invite_only?: boolean | null },
+    viewerId?: string,
+    viewerIsGlobalAdmin = false,
+) {
     const visibility = getQuarryVisibility(quarry);
+
+    if (viewerIsGlobalAdmin) {
+        return { allowed: true, visibility, isMember: false };
+    }
 
     if (visibility === "public") {
         return { allowed: true, visibility, isMember: false };
@@ -47,8 +55,17 @@ export function getProfileVisibility(profile: { profile_visibility?: string | nu
     return "public" satisfies ProfileVisibility;
 }
 
-export function canViewProfile(profileOwnerId: string, profileVisibility: string | null | undefined, viewerId?: string) {
+export function canViewProfile(
+    profileOwnerId: string,
+    profileVisibility: string | null | undefined,
+    viewerId?: string,
+    viewerIsGlobalAdmin = false,
+) {
     if (viewerId && viewerId === profileOwnerId) {
+        return true;
+    }
+
+    if (viewerIsGlobalAdmin) {
         return true;
     }
 

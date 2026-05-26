@@ -8,10 +8,12 @@ import { isRateLimited } from "@/lib/rateLimit";
 import { SubmitQueryForm } from "./SubmitQueryForm";
 import { hasRichTextContent } from "@/lib/utils";
 import { canViewQuarry } from "@/lib/visibility";
+import { normalizeMentionContent } from "@/lib/mentions";
 import { notifyMentions, refreshProfileMetrics, subscribeUserToQuery } from "@/lib/notifications";
 import { MindQuarryConfig } from "@/lib/config";
 import { getEffectivePostingPolicy, shouldReviewQuery } from "@/lib/moderation";
 import { assignTagsToQuery, getAvailableTagsForQuarry } from "@/lib/tags";
+import { isGlobalAdmin } from "@/lib/admin";
 
 type SubmitQueryResult = {
     ok: boolean;
@@ -22,6 +24,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
     const rawHeaders = await headers();
     const session = await auth.api.getSession({ headers: rawHeaders });
     if (!session?.user) redirect("/login");
+    const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
 
     const resolvedParams = await params;
 
@@ -30,7 +33,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
 
     const availableTags = await getAvailableTagsForQuarry(quarry.id, quarry.name || resolvedParams.name);
 
-    const access = await canViewQuarry(quarry, session.user.id);
+    const access = await canViewQuarry(quarry, session.user.id, viewerIsGlobalAdmin);
     if (!access.allowed) {
         redirect(`/q/${quarry.name}`);
     }
@@ -67,6 +70,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
         }
 
         const requiresReview = shouldReviewQuery(postingPolicy);
+        const normalizedBody = (await normalizeMentionContent(body, session.user.id)).content;
 
         let newQueryId: string | null = null;
         try {
@@ -75,7 +79,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
                 quarry_id: quarry!.id,
                 user_id: session.user.id,
                 title,
-                body,
+                body: normalizedBody,
                 validation_status: requiresReview ? "pending" : "approved",
             }).returning("id").executeTakeFirst();
 
@@ -94,7 +98,7 @@ export default async function SubmitQueryPage({ params }: { params: Promise<{ na
                 if (!requiresReview) {
                     await notifyMentions({
                         actorUserId: session.user.id,
-                        content: `${title}\n${body}`,
+                        content: normalizedBody,
                         href: `/q/${quarry!.name}/query/${query.id}`,
                         title: `${session.user.name || "Someone"} mentioned you in a question`,
                         queryId: query.id,

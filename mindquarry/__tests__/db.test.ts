@@ -38,6 +38,7 @@ describe('getSiteSettings', () => {
       registration_enabled: true,
       simplified_mode_enabled: false,
       admin_monitoring_dms: false,
+      chat_report_context_size: 100,
     }
     executeTakeFirst
       .mockResolvedValueOnce(undefined)
@@ -51,6 +52,7 @@ describe('getSiteSettings', () => {
       registration_enabled: true,
       simplified_mode_enabled: false,
       admin_monitoring_dms: false,
+      chat_report_context_size: 100,
     })
   })
 })

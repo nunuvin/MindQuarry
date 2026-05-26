@@ -107,6 +107,10 @@ jest.mock('@/lib/tags', () => ({
   replaceTagsForQuery: jest.fn(),
 }))
 
+jest.mock('@/lib/admin', () => ({
+  isGlobalAdmin: jest.fn().mockResolvedValue(false),
+}))
+
 jest.mock('@/app/q/[name]/query/[id]/CopyLinkButton', () => ({
   CopyLinkButton: ({ answerId }: { answerId: string }) => <button type="button">Copy {answerId}</button>,
 }))
@@ -150,6 +154,16 @@ describe('Query discussion page', () => {
     render(Component)
 
     expect(screen.getByText('Your Answer')).toBeInTheDocument()
+  })
+
+  it('renders the followed state when the viewer already follows the thread', async () => {
+    subscriptionChain.executeTakeFirst.mockResolvedValueOnce({ user_id: 'user-1' })
+
+    const Component = await QueryDiscussionPage({ params: Promise.resolve({ name: 'javascript', id: 'query-1' }) })
+
+    render(Component)
+
+    expect(screen.getByRole('button', { name: 'Followed' })).toBeInTheDocument()
   })
 
   it('renders the query tags', async () => {

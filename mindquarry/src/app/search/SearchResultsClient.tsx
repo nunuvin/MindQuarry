@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
+import { VoteControls } from "@/components/vote-controls";
 import { getRichTextPreview } from "@/lib/utils";
 import type { SearchPage, SearchQueryResult, SearchQuarryResult, SearchResponse, SearchScope, SearchUserResult } from "@/lib/search";
 
 type SearchResultsClientProps = {
     initialQuery: string;
+    voteQueryAction?: (formData: FormData) => void | Promise<void>;
 };
 
 type SearchState = SearchResponse | null;
@@ -39,22 +41,30 @@ function hasAnyResults(state: SearchResponse | null) {
     return Boolean(state && (state.users.items.length > 0 || state.quarries.items.length > 0 || state.queries.items.length > 0));
 }
 
-const ACCESS_DECORATION: Record<string, { card: string; label: string }> = {
+const ACCESS_DECORATION: Record<string, { card: string; label: string; badge: string; badgeClassName: string }> = {
     public: {
-        card: "border-zinc-400/50 dark:border-zinc-500/60",
+        card: "border-zinc-400/70 bg-zinc-500/[0.035] shadow-[inset_0_0_0_1px_rgba(161,161,170,0.18)]",
         label: "Visible to everyone",
+        badge: "Public",
+        badgeClassName: "border-zinc-400/70 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
     },
     authenticated: {
-        card: "border-white/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]",
+        card: "border-slate-200 bg-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.92)] dark:border-slate-100/80 dark:bg-slate-50/5",
         label: "Visible to signed-in users",
+        badge: "Signed-in",
+        badgeClassName: "border-slate-300 bg-white text-slate-700 dark:border-slate-200/80 dark:bg-slate-100/10 dark:text-slate-100",
     },
     members: {
-        card: "border-sky-500/55 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.3)]",
+        card: "border-sky-500/80 bg-sky-500/[0.055] shadow-[inset_0_0_0_1px_rgba(14,165,233,0.34),0_10px_26px_-20px_rgba(14,165,233,0.85)]",
         label: "Visible by quarry membership",
+        badge: "Members",
+        badgeClassName: "border-sky-500/70 bg-sky-500/12 text-sky-700 dark:text-sky-300",
     },
     admin: {
-        card: "border-red-500/60 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.35)]",
+        card: "border-red-500/80 bg-red-500/[0.05] shadow-[inset_0_0_0_1px_rgba(239,68,68,0.4),0_10px_26px_-20px_rgba(239,68,68,0.9)]",
         label: "Visible because you are an instance admin",
+        badge: "Admin Only",
+        badgeClassName: "border-red-500/70 bg-red-500/12 text-red-700 dark:text-red-300",
     },
 };
 
@@ -62,7 +72,7 @@ function getAccessDecoration(accessLevel: string) {
     return ACCESS_DECORATION[accessLevel] || ACCESS_DECORATION.public;
 }
 
-export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) {
+export function SearchResultsClient({ initialQuery, voteQueryAction }: SearchResultsClientProps) {
     const [results, setResults] = useState<SearchState>(null);
     const [isLoadingInitial, setIsLoadingInitial] = useState(false);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
@@ -246,7 +256,10 @@ export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) 
                             const decoration = getAccessDecoration(quarry.accessLevel);
                             return (
                                 <Link href={`/q/${quarry.name}`} key={quarry.id} data-access-level={quarry.accessLevel} title={decoration.label} className={`soft-card p-5 transition-transform hover:-translate-y-0.5 ${decoration.card}`}>
-                                    <h3 className="font-display text-xl font-semibold tracking-tight text-sky-600 dark:text-sky-400">q/{quarry.name}</h3>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <h3 className="font-display text-xl font-semibold tracking-tight text-sky-600 dark:text-sky-400">q/{quarry.name}</h3>
+                                        <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${decoration.badgeClassName}`}>{decoration.badge}</span>
+                                    </div>
                                     <p className="mt-2 text-sm leading-6 text-muted-foreground line-clamp-2">{quarry.description}</p>
                                 </Link>
                             );
@@ -272,7 +285,10 @@ export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) 
                             const decoration = getAccessDecoration(user.accessLevel);
                             return (
                                 <Link href={href} key={user.id} data-access-level={user.accessLevel} title={decoration.label} className={`soft-card p-5 ${decoration.card}`}>
-                                    <p className="font-display text-lg font-semibold tracking-tight">{user.displayUsername || user.username || user.name}</p>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <p className="font-display text-lg font-semibold tracking-tight">{user.displayUsername || user.username || user.name}</p>
+                                        <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${decoration.badgeClassName}`}>{decoration.badge}</span>
+                                    </div>
                                     <p className="mt-2 text-sm text-muted-foreground">@{user.username || user.id}</p>
                                     {user.name && <p className="mt-1 text-sm text-muted-foreground">{user.name}</p>}
                                 </Link>
@@ -288,21 +304,31 @@ export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) 
                     <h2 className="font-display text-2xl font-semibold tracking-tight">Queries</h2>
                     {results.queries.items.map((query: SearchQueryResult) => {
                         const decoration = getAccessDecoration(query.accessLevel);
+                        const preview = getRichTextPreview(query.body || query.answer_match_preview || "");
                         return (
                             <article key={query.id} data-access-level={query.accessLevel} title={decoration.label} className={`soft-card flex gap-4 p-5 ${decoration.card}`}>
                                 <div className="flex min-w-[64px] flex-col items-center justify-start rounded-[20px] border border-border/70 bg-muted/30 p-3">
-                                    <span className="text-lg font-semibold">{query.score}</span>
+                                    {voteQueryAction ? (
+                                        <VoteControls score={query.score} action={voteQueryAction} fields={{ query_id: query.id }} compact />
+                                    ) : (
+                                        <span className="text-lg font-semibold">{query.score}</span>
+                                    )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-400">q/{query.quarry_name}</div>
+                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-400">q/{query.quarry_name}</div>
+                                        <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${decoration.badgeClassName}`}>{decoration.badge}</span>
+                                    </div>
                                     <Link href={`/q/${query.quarry_name}/query/${query.id}`} className="mb-2 block font-display text-2xl font-semibold tracking-tight hover:underline line-clamp-2">
                                         {query.title}
                                     </Link>
-                                    <p className="mb-4 break-words text-sm leading-7 text-muted-foreground line-clamp-4">
-                                        {getRichTextPreview(query.body || query.answer_match_preview || "") || "No details provided."}
-                                    </p>
+                                    {preview && (
+                                        <p className="mb-4 break-words text-sm leading-7 text-muted-foreground line-clamp-4">
+                                            {preview}
+                                        </p>
+                                    )}
                                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {query.answer_match_preview ? "Matched in an answer" : "Matched in the query body"}
+                                        {query.answer_match_preview ? "Matched in an answer" : preview ? "Matched in the query body" : "Matched in the title"}
                                     </p>
                                 </div>
                             </article>

@@ -8,11 +8,13 @@ import { db } from "@/lib/db";
 import { generateUUID } from "@/lib/utils";
 import { refreshProfileMetrics } from "@/lib/notifications";
 import { canViewProfile, getProfileVisibility } from "@/lib/visibility";
+import { isGlobalAdmin } from "@/lib/admin";
 
 export default async function UserProfilePage({ params }: { params: Promise<{ username: string }> }) {
     const rawHeaders = await headers();
     const session = await auth.api.getSession({ headers: rawHeaders });
     const resolvedParams = await params;
+    const viewerIsGlobalAdmin = session?.user?.id ? await isGlobalAdmin(session.user.id) : false;
 
     const user = await db.selectFrom("user")
         .select(["id", "name", "image", "createdAt", "displayUsername", "username"])
@@ -32,7 +34,7 @@ export default async function UserProfilePage({ params }: { params: Promise<{ us
     const isMe = session?.user?.id === user.id;
     const profileUserId = user.id;
     const profileVisibility = getProfileVisibility(profile);
-    const canView = canViewProfile(user.id, profileVisibility, session?.user?.id);
+    const canView = canViewProfile(user.id, profileVisibility, session?.user?.id, viewerIsGlobalAdmin);
 
     if (!canView) {
         if (!session?.user && profileVisibility === "authenticated") {

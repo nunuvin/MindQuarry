@@ -36,6 +36,7 @@ const teamMembersChain = createChain([
 ], ['leftJoin', 'select', 'where', 'orderBy'])
 const postingPoliciesChain = createChain([], ['leftJoin', 'select', 'where', 'orderBy'])
 const getAvailableTagsForQuarry = jest.fn()
+const isGlobalAdmin = jest.fn()
 const selectFrom = jest.fn()
 
 postingPoliciesChain.execute = jest.fn().mockResolvedValue([])
@@ -67,7 +68,14 @@ jest.mock('@/lib/db', () => ({
   },
 }))
 
+jest.mock('@/lib/admin', () => ({
+  isGlobalAdmin: (...args: unknown[]) => isGlobalAdmin(...args),
+}))
+
 beforeEach(() => {
+  isGlobalAdmin.mockReset()
+  isGlobalAdmin.mockResolvedValue(false)
+  membershipChain.executeTakeFirst.mockResolvedValue({ role: 'admin' })
   selectFrom.mockReset()
   selectFrom.mockImplementation((table: string) => {
       if (table === 'quarries') return quarryChain
@@ -105,5 +113,18 @@ describe('Quarry settings page', () => {
     expect(screen.getByText('database')).toBeInTheDocument()
     expect(screen.getByText('full-text-search')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Mod Queue' })).toHaveAttribute('href', '/q/postgres/mod/queue')
+  })
+
+  it('renders for instance admins even without quarry membership', async () => {
+    getAvailableTagsForQuarry.mockResolvedValue([])
+    isGlobalAdmin.mockResolvedValue(true)
+    membershipChain.executeTakeFirst.mockResolvedValueOnce(null)
+
+    const Component = await QuarrySettingsPage({ params: Promise.resolve({ name: 'postgres' }) })
+
+    render(Component)
+
+    expect(screen.getByText('q/postgres Settings')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Mod History' })).toHaveAttribute('href', '/q/postgres/mod/history')
   })
 })

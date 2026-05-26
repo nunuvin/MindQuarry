@@ -30,7 +30,18 @@ export default function LoginPage() {
                 session = await authClient.signIn.username({ username: identifier, password });
             }
             if (session.error) throw new Error(session.error.message || "Login failed");
-            router.replace("/");
+            let redirectHref = "/";
+            try {
+                const response = await fetch("/api/auth/password-reset-status", { cache: "no-store" });
+                if (response.ok) {
+                    const payload = await response.json() as { required?: boolean };
+                    if (payload.required) {
+                        redirectHref = "/settings";
+                    }
+                }
+            } catch {}
+
+            router.replace(redirectHref);
             router.refresh();
         } catch (error: unknown) {
             setError(getErrorMessage(error, "Login failed"));

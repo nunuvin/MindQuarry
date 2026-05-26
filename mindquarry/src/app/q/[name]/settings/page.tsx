@@ -8,6 +8,7 @@ import { addQuarryTags, getAvailableTagsForQuarry } from "@/lib/tags";
 import { isRateLimited } from "@/lib/rateLimit";
 import { MindQuarryConfig } from "@/lib/config";
 import { canAdministerQuarry, listPostingPolicies, upsertPostingPolicy } from "@/lib/moderation";
+import { isGlobalAdmin } from "@/lib/admin";
 
 type SettingsTab = "settings" | "team" | "moderation" | "bans";
 
@@ -32,6 +33,7 @@ export default async function QuarrySettingsPage({
     const activeTab = SETTINGS_TABS.includes((resolvedSearchParams.tab || "") as SettingsTab)
         ? resolvedSearchParams.tab as SettingsTab
         : "settings";
+    const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
 
     const quarry = await db.selectFrom("quarries").selectAll().where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
@@ -88,7 +90,7 @@ export default async function QuarrySettingsPage({
         .where("user_id", "=", session.user.id)
         .executeTakeFirst();
 
-    if (!membership || !canAdministerQuarry(membership.role)) {
+    if (!canAdministerQuarry(membership?.role, viewerIsGlobalAdmin)) {
         return (
             <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border rounded shadow">
                 <h1 className="text-2xl font-bold text-red-500">Access Denied</h1>
@@ -103,9 +105,10 @@ export default async function QuarrySettingsPage({
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
 
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || membership.role !== 'admin') return;
+        if (!canAdministerQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const description = formData.get("description") as string;
         const visibility = (formData.get("visibility") as string) || "public";
@@ -138,9 +141,10 @@ export default async function QuarrySettingsPage({
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
 
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canAdministerQuarry(membership.role)) return;
+        if (!canAdministerQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const username = ((formData.get("username") as string) || "").trim();
         const role = (formData.get("role") as string) || "member";
@@ -171,9 +175,10 @@ export default async function QuarrySettingsPage({
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
 
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canAdministerQuarry(membership.role)) return;
+        if (!canAdministerQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const username = ((formData.get("username") as string) || "").trim();
         const reviewMode = (formData.get("review_mode") as string) || "none";

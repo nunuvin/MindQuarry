@@ -6,6 +6,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { canModerateQuarry } from "@/lib/moderation";
 import { generateUUID } from "@/lib/utils";
+import { isGlobalAdmin } from "@/lib/admin";
 
 export default async function QuarryModHistoryPage({ params }: { params: Promise<{ name: string }> }) {
     const rawHeaders = await headers();
@@ -15,10 +16,11 @@ export default async function QuarryModHistoryPage({ params }: { params: Promise
     const resolvedParams = await params;
     const quarry = await db.selectFrom("quarries").selectAll().where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
+    const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
 
     // Verify moderator/admin
     const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry.id).where("user_id", "=", session.user.id).executeTakeFirst();
-    if (!membership || !canModerateQuarry(membership.role)) {
+    if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) {
         return (
             <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border rounded shadow">
                 <h1 className="text-2xl font-bold text-red-500">Access Denied</h1>
@@ -75,8 +77,9 @@ export default async function QuarryModHistoryPage({ params }: { params: Promise
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canModerateQuarry(membership.role)) return;
+        if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const id = formData.get("id") as string;
         const targetType = formData.get("target_type") as string;

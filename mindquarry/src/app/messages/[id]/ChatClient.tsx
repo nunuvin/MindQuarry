@@ -220,6 +220,9 @@ export function ChatClient({
                     &larr;
                 </Link>
                 <h1 className="font-display flex-1 truncate text-2xl font-semibold tracking-tight">{displayName}</h1>
+                <Link href={`/messages/${conversationId}/report`} className="soft-button rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-red-500">
+                    Report chat
+                </Link>
             </div>
 
             <div className="soft-panel relative flex flex-1 flex-col overflow-hidden">
@@ -229,7 +232,8 @@ export function ChatClient({
                         const isDeleted = isDeletedMessageBody(msg.body);
                         const canDelete = (isMe || isGlobalAdmin) && !isDeleted;
                         const canHide = isGlobalAdmin && !msg.is_hidden && !isDeleted;
-                        const showActions = canDelete || canHide;
+                        const canReport = !msg.is_hidden && !isDeleted;
+                        const showActions = canDelete || canHide || canReport;
                         return (
                             <div key={msg.id} className={`flex flex-col max-w-[80%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}>
                                 <div className="mb-1 flex items-center gap-2">
@@ -267,6 +271,15 @@ export function ChatClient({
                                                         >
                                                             {hidingMessageId === msg.id ? "Hiding..." : "Hide message"}
                                                         </button>
+                                                    )}
+                                                    {canReport && (
+                                                        <Link
+                                                            href={`/messages/${conversationId}/report?messageId=${encodeURIComponent(msg.id)}`}
+                                                            className="flex w-full rounded-xl px-3 py-2 text-left text-xs font-bold uppercase tracking-[0.16em] text-red-500 transition hover:bg-muted"
+                                                            onClick={() => setOpenActionMenuId(null)}
+                                                        >
+                                                            Report message
+                                                        </Link>
                                                     )}
                                                 </div>
                                             )}

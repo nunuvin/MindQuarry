@@ -12,6 +12,7 @@ import { sql } from "kysely";
 import { SubmitAnswerForm } from "./SubmitAnswerForm";
 import { SubmitQueryForm } from "../../submit/SubmitQueryForm";
 import { hasRichTextContent } from "@/lib/utils";
+import { normalizeMentionContent } from "@/lib/mentions";
 import { applyAnswerVote, applyQueryVote } from "@/lib/votes";
 import { VoteControls } from "@/components/vote-controls";
 import { canViewQuarry } from "@/lib/visibility";
@@ -21,6 +22,8 @@ import { recordQueryView } from "@/lib/queryViews";
 import { getAvailableTagsForQuarry, getQueryTagMap, replaceTagsForQuery } from "@/lib/tags";
 import { canAdministerQuarry, canModerateQuarry, getEffectivePostingPolicy, shouldReviewAnswer } from "@/lib/moderation";
 import { deleteAnswerByAuthor, deleteQuery, setQueryArchived, updateAnswerByAuthor, updateQueryByAuthor } from "@/lib/content";
+import { isGlobalAdmin } from "@/lib/admin";
+import { ChevronDown, ChevronUp, Ellipsis } from "lucide-react";
 
 type SubmitAnswerResult = {
     ok: boolean;
@@ -41,6 +44,7 @@ export default async function QueryDiscussionPage({
 }) {
     const rawHeaders = await headers();
     const session = await auth.api.getSession({ headers: rawHeaders });
+    const viewerIsGlobalAdmin = session?.user?.id ? await isGlobalAdmin(session.user.id) : false;
 
     const resolvedParams = await params;
     const resolvedSearchParams = searchParams ? await searchParams : {};
@@ -56,10 +60,10 @@ export default async function QueryDiscussionPage({
             .executeTakeFirst()
         : null;
     const quarryRole = membership?.role || null;
-    const isQuarryAdmin = canAdministerQuarry(quarryRole);
-    const canModerate = canModerateQuarry(quarryRole);
+    const isQuarryAdmin = canAdministerQuarry(quarryRole, viewerIsGlobalAdmin);
+    const canModerate = canModerateQuarry(quarryRole, viewerIsGlobalAdmin);
 
-    const access = await canViewQuarry(quarry, session?.user?.id);
+    const access = await canViewQuarry(quarry, session?.user?.id, viewerIsGlobalAdmin);
     if (!access.allowed) {
         if (!session?.user) {
             redirect("/login");
@@ -92,6 +96,7 @@ export default async function QueryDiscussionPage({
             eb.fn.coalesce("query_views.views", sql<number>`0`).as("views")
         ])
         .where("queries.id", "=", resolvedParams.id)
+        .where("queries.quarry_id", "=", quarry.id)
         .where("is_hidden", "=", false)
         .executeTakeFirst();
 
@@ -163,6 +168,7 @@ export default async function QueryDiscussionPage({
         }
 
         const requiresReview = shouldReviewAnswer(postingPolicy);
+        const normalizedBody = (await normalizeMentionContent(body, session.user.id)).content;
 
         try {
             const parentAnswer = parentId
@@ -173,7 +179,7 @@ export default async function QueryDiscussionPage({
                 id: generateUUID(),
                 query_id: query!.id,
                 user_id: session.user.id,
-                body,
+                body: normalizedBody,
                 parent_answer_id: parentId ? parentId : null,
                 validation_status: requiresReview ? "pending" : "approved",
             }).returning("id").executeTakeFirst();
@@ -187,13 +193,13 @@ export default async function QueryDiscussionPage({
                     actorUserId: session.user.id,
                     href,
                     title: `${session.user.name || "Someone"} replied in ${query!.title || "a thread"}`,
-                    body,
+                    body: normalizedBody,
                     answerId: answer.id,
                     explicitRecipientIds: parentAnswer?.user_id ? [parentAnswer.user_id] : [],
                 });
                 await notifyMentions({
                     actorUserId: session.user.id,
-                    content: body,
+                    content: normalizedBody,
                     href,
                     title: `${session.user.name || "Someone"} mentioned you in ${query!.title || "a thread"}`,
                     queryId: query!.id,
@@ -263,11 +269,13 @@ export default async function QueryDiscussionPage({
             return { ok: false, error: "Both the title and body are required." };
         }
 
+        const normalizedBody = (await normalizeMentionContent(body, session.user.id)).content;
+
         const updated = await updateQueryByAuthor({
             queryId: query!.id,
             userId: session.user.id,
             title,
-            body,
+            body: normalizedBody,
         });
 
         if (!updated) {
@@ -355,10 +363,12 @@ export default async function QueryDiscussionPage({
             return { ok: false, error: "Answer cannot be empty." };
         }
 
+        const normalizedBody = (await normalizeMentionContent(body, session.user.id)).content;
+
         const updated = await updateAnswerByAuthor({
             answerId,
             userId: session.user.id,
-            body,
+            body: normalizedBody,
         });
 
         if (!updated) {
@@ -468,6 +478,7 @@ export default async function QueryDiscussionPage({
             <div className={`space-y-4 ${depth > 0 ? "ml-6 border-l border-border/70 pl-4" : "mt-8"}`}>
                 {filtered.map(a => (
                     <article key={a.id} id={`answer-${a.id}`} className="soft-card p-5">
+                        <input type="checkbox" id={`collapse-${a.id}`} className="peer hidden" />
                         <div className="flex gap-4">
                             <div className="min-w-[58px] rounded-[18px] border border-border/70 bg-muted/30 p-2">
                                 <VoteControls score={a.score} action={voteAnswer} fields={{ answer_id: a.id }} compact />
@@ -480,69 +491,75 @@ export default async function QueryDiscussionPage({
                                     <span>{a.displayUsername || a.username || a.name} • {a.created_at ? new Date(a.created_at).toLocaleDateString() : ''}</span>
                                     <div className="flex gap-2">
                                         <CopyLinkButton answerId={a.id} />
-                                        <label htmlFor={`collapse-${a.id}`} className="soft-button cursor-pointer rounded-full px-3 py-1 text-xs">
-                                            +/-
-                                        </label>
+                                        <details className="relative">
+                                            <summary className="soft-button inline-flex cursor-pointer list-none rounded-full px-3 py-1 text-xs" aria-label="Answer actions">
+                                                <Ellipsis className="h-4 w-4" />
+                                            </summary>
+                                            <div className="absolute right-0 top-10 z-20 w-[min(22rem,80vw)] rounded-[24px] border border-border/70 bg-card p-4 shadow-lg">
+                                                <div className="space-y-3 text-sm">
+                                                    {session?.user && !query.is_archived && (
+                                                        <details>
+                                                            <summary className="cursor-pointer font-semibold text-sky-600 hover:underline">Reply / Quote</summary>
+                                                            <div className="mt-4">
+                                                                <SubmitAnswerForm
+                                                                    parentId={a.id}
+                                                                    defaultBody={buildQuotedReply(a.body)}
+                                                                    submitAction={submitAnswer}
+                                                                />
+                                                            </div>
+                                                        </details>
+                                                    )}
+                                                    <Link href={`/q/${quarry.name}/query/${query.id}/report?answerId=${a.id}`} className="block font-semibold text-red-500 hover:underline">
+                                                        Report Answer
+                                                    </Link>
+                                                    {session?.user?.id === a.author_id && (
+                                                        <details>
+                                                            <summary className="cursor-pointer font-semibold text-sky-600 hover:underline">Edit Answer</summary>
+                                                            <div className="mt-4 space-y-4">
+                                                                <SubmitAnswerForm
+                                                                    defaultBody={a.body || ""}
+                                                                    submitAction={editAnswer}
+                                                                    hiddenFields={{ answer_id: a.id }}
+                                                                    submitLabel="Save Answer"
+                                                                    submittingLabel="Saving..."
+                                                                    resetOnSuccess={false}
+                                                                />
+                                                                <form action={deleteAnswer}>
+                                                                    <input type="hidden" name="answer_id" value={a.id} />
+                                                                    <button type="submit" className="text-xs font-bold uppercase tracking-[0.16em] text-red-500 hover:underline">
+                                                                        Delete Answer
+                                                                    </button>
+                                                                </form>
+                                                            </div>
+                                                        </details>
+                                                    )}
+                                                    {session?.user?.id === query.author_id && (
+                                                        <form action={acceptAnswer}>
+                                                            <input type="hidden" name="answer_id" value={a.id} />
+                                                            <button type="submit" className="cursor-pointer font-semibold text-green-600 hover:underline">
+                                                                {query.accepted_answer_id === a.id ? "Unaccept" : "Accept"}
+                                                            </button>
+                                                        </form>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </details>
                                     </div>
                                 </div>
-
-                                <input type="checkbox" id={`collapse-${a.id}`} className="peer hidden" />
 
                                 <div className="peer-checked:hidden">
                                     <div className="text-sm">
                                         <TipTapRenderer content={a.body || ""} />
                                     </div>
-
-                                    <div className="mt-4 flex items-center gap-4 border-t border-border/70 pt-4 text-sm font-semibold">
-                                        {session?.user && !query.is_archived && (
-                                            <details className="w-full">
-                                                <summary className="inline-flex cursor-pointer list-none text-sky-600 hover:underline">
-                                                    Reply / Quote
-                                                </summary>
-                                                <div className="mt-4">
-                                                    <SubmitAnswerForm
-                                                        parentId={a.id}
-                                                        defaultBody={buildQuotedReply(a.body)}
-                                                        submitAction={submitAnswer}
-                                                    />
-                                                </div>
-                                            </details>
-                                        )}
-                                        {session?.user?.id === a.author_id && (
-                                            <details className="w-full">
-                                                <summary className="inline-flex cursor-pointer list-none text-sky-600 hover:underline">
-                                                    Edit Answer
-                                                </summary>
-                                                <div className="mt-4 space-y-4">
-                                                    <SubmitAnswerForm
-                                                        defaultBody={a.body || ""}
-                                                        submitAction={editAnswer}
-                                                        hiddenFields={{ answer_id: a.id }}
-                                                        submitLabel="Save Answer"
-                                                        submittingLabel="Saving..."
-                                                        resetOnSuccess={false}
-                                                    />
-                                                    <form action={deleteAnswer}>
-                                                        <input type="hidden" name="answer_id" value={a.id} />
-                                                        <button type="submit" className="text-xs font-bold uppercase tracking-[0.16em] text-red-500 hover:underline">
-                                                            Delete Answer
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            </details>
-                                        )}
-                                        {session?.user?.id === query.author_id && (
-                                            <form action={acceptAnswer}>
-                                                <input type="hidden" name="answer_id" value={a.id} />
-                                                <button type="submit" className="cursor-pointer text-green-600 hover:underline">
-                                                    {query.accepted_answer_id === a.id ? "Unaccept" : "Accept"}
-                                                </button>
-                                            </form>
-                                        )}
-                                    </div>
-
-
                                 </div>
+                                {answers.some((child) => child.parent_answer_id === a.id) && (
+                                    <div className="ml-6 mt-4">
+                                        <label htmlFor={`collapse-${a.id}`} className="soft-button inline-flex cursor-pointer rounded-full px-3 py-1 text-xs" aria-label="Toggle response thread">
+                                            <ChevronUp className="h-4 w-4 peer-checked:hidden" />
+                                            <ChevronDown className="hidden h-4 w-4 peer-checked:block" />
+                                        </label>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className="peer-checked:hidden">
@@ -584,8 +601,15 @@ export default async function QueryDiscussionPage({
                         <div className="flex items-center gap-3 self-start">
                             {session?.user && (
                                 <form action={toggleSubscription}>
-                                    <button type="submit" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-sky-400/70 hover:text-sky-600">
-                                        {subscription ? "Unfollow Thread" : "Follow Thread"}
+                                    <button
+                                        type="submit"
+                                        aria-pressed={Boolean(subscription)}
+                                        title={subscription ? "Click to unfollow this thread" : "Follow this thread"}
+                                        className={subscription
+                                            ? "rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700 hover:border-sky-500 hover:text-sky-800 dark:text-sky-300"
+                                            : "rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-sky-400/70 hover:text-sky-600"}
+                                    >
+                                        {subscription ? "Followed" : "Follow"}
                                     </button>
                                 </form>
                             )}

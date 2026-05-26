@@ -34,12 +34,19 @@ export default function Sidebar({
     const quarryMatch = pathname.match(/^\/q\/([^/]+)/);
     const currentQuarry = quarryMatch ? decodeURIComponent(quarryMatch[1]) : null;
     const [selectedAdminQuarry, setSelectedAdminQuarry] = useState("");
+    const currentAdminQuarry = currentQuarry
+        ? adminQuarries.find((quarry) => quarry.name === currentQuarry)
+        : null;
 
     const quarryLinks = currentQuarry ? [
         { name: `q/${currentQuarry}`, href: `/q/${currentQuarry}`, icon: Shield },
         { name: "Submit Query", href: `/q/${currentQuarry}/submit`, icon: MessageSquare },
+    ] : [];
+
+    const quarryAdminLinks = currentQuarry && currentAdminQuarry ? [
         { name: "Mod Queue", href: `/q/${currentQuarry}/mod/queue`, icon: Flag },
         { name: "Mod History", href: `/q/${currentQuarry}/mod/history`, icon: Shield },
+        { name: "Quarry Settings", href: `/q/${currentQuarry}/settings`, icon: Settings },
     ] : [];
 
     useEffect(() => {
@@ -67,11 +74,10 @@ export default function Sidebar({
     return (
         <aside className={cn(
             "sticky hidden shrink-0 border-r border-border/70 bg-card md:block",
-            isCollapsed ? "w-20" : "w-72"
+            isCollapsed ? "w-16" : "w-72"
         )} style={{ top: `${SIDEBAR_NAVBAR_OFFSET_PX}px`, height: `calc(100vh - ${SIDEBAR_NAVBAR_OFFSET_PX}px)` }}>
             <div className={cn("flex h-full flex-col py-6", isCollapsed ? "px-3" : "px-5")}>
-                <div className="mb-6 flex items-center justify-between gap-3">
-                    {!isCollapsed && <p className="font-display text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Navigation</p>}
+                <div className="mb-6 flex justify-end">
                     <button
                         type="button"
                         onClick={toggleSidebar}
@@ -139,13 +145,43 @@ export default function Sidebar({
                         </div>
                     )}
 
+                    {quarryAdminLinks.length > 0 && (
+                        <div>
+                            {!isCollapsed && <h4 className="font-display mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Quarry Admin</h4>}
+                            <div className="space-y-2">
+                                {quarryAdminLinks.map((link) => {
+                                    const Icon = link.icon;
+                                    const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+
+                                    return (
+                                        <Link
+                                            key={link.name}
+                                            href={link.href}
+                                            title={isCollapsed ? link.name : undefined}
+                                            className={cn(
+                                                "group flex rounded-2xl py-3 text-sm font-semibold text-amber-700 transition-all duration-200 dark:text-amber-300",
+                                                isCollapsed ? "justify-center px-3" : "items-center gap-3 px-4",
+                                                isActive
+                                                    ? "bg-amber-500/12 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.22)]"
+                                                    : "hover:bg-amber-500/6"
+                                            )}
+                                        >
+                                            <Icon className="h-4 w-4 transition-transform duration-200 group-hover:-translate-y-0.5" />
+                                            {!isCollapsed && link.name}
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {isGlobalAdmin && (
                         <div>
                             {!isCollapsed && <h4 className="font-display mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Instance</h4>}
                             <div className="space-y-2">
                                 {adminLinks.map((link) => {
                                     const Icon = link.icon;
-                                    const isActive = pathname === link.href;
+                                    const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
 
                                     return (
                                         <Link
@@ -198,7 +234,6 @@ export default function Sidebar({
 
                 {!isCollapsed && (
                     <div className="space-y-3 border-t border-border/70 pt-4">
-                        <p className="font-display text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Appearance</p>
                         <ThemeSwitcher />
                     </div>
                 )}

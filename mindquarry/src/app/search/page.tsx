@@ -1,8 +1,32 @@
+import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
+
+import { auth } from "@/lib/auth";
+import { applyQueryVote } from "@/lib/votes";
+
 import { SearchResultsClient } from "./SearchResultsClient";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
     const resolvedParams = await searchParams;
     const query = resolvedParams.q || "";
+
+    async function voteQuery(formData: FormData) {
+        "use server";
+        const rawHeaders = await headers();
+        const session = await auth.api.getSession({ headers: rawHeaders });
+        if (!session?.user) {
+            return;
+        }
+
+        const queryId = formData.get("query_id") as string;
+        const value = Number(formData.get("value"));
+        if (!queryId || (value !== 1 && value !== -1)) {
+            return;
+        }
+
+        await applyQueryVote(queryId, session.user.id, value);
+        revalidatePath("/search");
+    }
 
     return (
         <div className="page-shell max-w-6xl">
@@ -27,7 +51,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 </form>
 
                 <div className="mt-8">
-                    <SearchResultsClient initialQuery={query} />
+                    <SearchResultsClient initialQuery={query} voteQueryAction={voteQuery} />
                 </div>
             </div>
         </div>

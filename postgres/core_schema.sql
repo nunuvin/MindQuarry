@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS mq_public.profiles (
     profile_visibility VARCHAR(50) DEFAULT 'public',
     messaging_privacy VARCHAR(50) DEFAULT 'anyone',
     mention_notifications VARCHAR(50) DEFAULT 'all',
+    force_password_reset BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -46,7 +47,8 @@ CREATE TABLE IF NOT EXISTS mq_public.site_settings (
     admin_monitoring_dms BOOLEAN DEFAULT false,
     global_ban_template TEXT,
     first_admin_user_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
-    simplified_mode_enabled BOOLEAN DEFAULT false
+    simplified_mode_enabled BOOLEAN DEFAULT false,
+    chat_report_context_size INTEGER DEFAULT 100
 );
 
 CREATE TABLE IF NOT EXISTS mq_public.quarries (
@@ -260,9 +262,15 @@ CREATE TABLE IF NOT EXISTS mq_public.user_reports (
     quarry_id UUID REFERENCES mq_public.quarries(id) ON DELETE CASCADE,
     target_type VARCHAR(50),
     target_id UUID,
+    conversation_id UUID REFERENCES mq_public.conversations(id) ON DELETE SET NULL,
     reporter_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE CASCADE,
     reported_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE CASCADE,
     reason TEXT,
+    target_preview TEXT,
+    context_snapshot TEXT,
+    context_size INTEGER,
+    escalated_by_id VARCHAR(255) REFERENCES mqauth."user"(id) ON DELETE SET NULL,
+    escalated_from_quarry_id UUID REFERENCES mq_public.quarries(id) ON DELETE SET NULL,
     status VARCHAR(50) DEFAULT 'pending',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

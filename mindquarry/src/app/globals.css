@@ -143,6 +143,24 @@
     opacity: 0.08;
     mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.14), transparent 28%);
   }
+
+  .mq-mention,
+  .ProseMirror a[data-mention="true"] {
+    color: rgb(14 116 144);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .mq-mention:hover,
+  .ProseMirror a[data-mention="true"]:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.22em;
+  }
+
+  .dark .mq-mention,
+  .dark .ProseMirror a[data-mention="true"] {
+    color: rgb(125 211 252);
+  }
 }
 
 @layer utilities {

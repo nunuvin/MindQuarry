@@ -6,6 +6,8 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { canModerateQuarry, upsertPostingPolicy } from "@/lib/moderation";
 import { generateUUID, richTextToPlainText } from "@/lib/utils";
+import { escalateReportsToInstance } from "@/lib/reports";
+import { isGlobalAdmin } from "@/lib/admin";
 
 export default async function QuarryModQueuePage({ params }: { params: Promise<{ name: string }> }) {
     const rawHeaders = await headers();
@@ -15,10 +17,11 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
     const resolvedParams = await params;
     const quarry = await db.selectFrom("quarries").selectAll().where("name", "=", resolvedParams.name).executeTakeFirst();
     if (!quarry) return notFound();
+    const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
 
     // Verify moderator/admin
     const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry.id).where("user_id", "=", session.user.id).executeTakeFirst();
-    if (!membership || !canModerateQuarry(membership.role)) {
+    if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) {
         return (
             <div className="max-w-4xl mx-auto mt-12 p-6 bg-card border rounded shadow">
                 <h1 className="text-2xl font-bold text-red-500">Access Denied</h1>
@@ -32,6 +35,7 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         .select([
             "user_reports.id", "user_reports.reason", "user_reports.status", "user_reports.created_at",
             "user_reports.target_id", "user_reports.target_type",
+            "user_reports.target_preview",
             "reporter.name as reporter_name", "reporter.displayUsername as reporter_username",
             "reported.name as reported_name", "reported.displayUsername as reported_username",
             "reported.id as reported_id", "reporter.id as reporter_id"
@@ -97,8 +101,9 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canModerateQuarry(membership.role)) return;
+        if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const id = formData.get("id") as string;
         await db.updateTable("user_reports").set({ status: "dismissed" }).where("id", "=", id).execute();
@@ -119,8 +124,9 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canModerateQuarry(membership.role)) return;
+        if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const targetId = formData.get("target_id") as string;
         const targetType = formData.get("target_type") as string;
@@ -150,13 +156,20 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canModerateQuarry(membership.role)) return;
+        if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const targetId = formData.get("target_id") as string;
         const targetType = formData.get("target_type") as string;
 
-        await db.updateTable("user_reports").set({ status: "escalated", quarry_id: null }).where("target_id", "=", targetId).where("target_type", "=", targetType).execute();
+        await escalateReportsToInstance({
+            quarryId: quarry!.id,
+            quarryName: quarry!.name || resolvedParams.name,
+            targetId,
+            targetType,
+            actorUserId: session.user.id,
+        });
         await db.insertInto("mod_actions").values({
             id: generateUUID(),
             quarry_id: quarry!.id,
@@ -174,8 +187,9 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canModerateQuarry(membership.role)) return;
+        if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const targetId = formData.get("target_id") as string;
         const targetType = formData.get("target_type") as string;
@@ -211,8 +225,9 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const rawHeaders = await headers();
         const session = await auth.api.getSession({ headers: rawHeaders });
         if (!session?.user) return;
+        const viewerIsGlobalAdmin = await isGlobalAdmin(session.user.id);
         const membership = await db.selectFrom("quarry_members").selectAll().where("quarry_id", "=", quarry!.id).where("user_id", "=", session.user.id).executeTakeFirst();
-        if (!membership || !canModerateQuarry(membership.role)) return;
+        if (!canModerateQuarry(membership?.role, viewerIsGlobalAdmin)) return;
 
         const targetUserId = formData.get("user_id") as string;
         const preset = formData.get("preset") as string;
@@ -361,6 +376,11 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                                 )}
                                 <div>
                                     <h3 className="font-display mb-2 text-2xl font-semibold tracking-tight">Reported {r.target_type}</h3>
+                                    {r.target_preview && (
+                                        <div className="mb-4 rounded-[20px] border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                                            {r.target_preview}
+                                        </div>
+                                    )}
                                     <div className="mb-4 flex flex-col gap-4 rounded-[24px] border border-red-500/20 bg-red-500/5 p-4 text-sm">
                                         {group.map(report => (
                                             <div key={report.id} className="border-b-2 border-black/10 dark:border-white/10 pb-4 last:border-0 last:pb-0">
