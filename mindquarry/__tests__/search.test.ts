@@ -41,6 +41,15 @@ describe('search helpers', () => {
     })
   })
 
+  it('parses the post alias for query search', async () => {
+    const { parseSearchInput } = await import('@/lib/search')
+
+    expect(parseSearchInput('p: indexing')).toEqual({
+      scope: 'queries',
+      term: 'indexing',
+    })
+  })
+
   it('falls back to all-scope when the prefix is unknown', async () => {
     const { parseSearchInput } = await import('@/lib/search')
 
@@ -48,5 +57,16 @@ describe('search helpers', () => {
       scope: 'all',
       term: 'tag: search',
     })
+  })
+
+  it('classifies search access levels for visibility and admin overrides', async () => {
+    const { resolveQuarrySearchAccessLevel, resolveQuerySearchAccessLevel, resolveUserSearchAccessLevel } = await import('@/lib/search')
+
+    expect(resolveQuarrySearchAccessLevel({ visibility: 'public' })).toBe('public')
+    expect(resolveQuarrySearchAccessLevel({ visibility: 'authenticated' })).toBe('authenticated')
+    expect(resolveQuarrySearchAccessLevel({ visibility: 'members', isMember: true })).toBe('members')
+    expect(resolveQuarrySearchAccessLevel({ visibility: 'members', isMember: false, viewerIsGlobalAdmin: true })).toBe('admin')
+    expect(resolveQuerySearchAccessLevel({ visibility: 'public', isHidden: true, viewerIsGlobalAdmin: true })).toBe('admin')
+    expect(resolveUserSearchAccessLevel({ profileVisibility: 'private', viewerIsGlobalAdmin: true })).toBe('admin')
   })
 })

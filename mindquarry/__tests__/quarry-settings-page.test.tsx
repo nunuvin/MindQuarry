@@ -25,10 +25,29 @@ const quarryChain = createChain({
 })
 
 const membershipChain = createChain({ role: 'admin' })
+const teamMembersChain = createChain([
+  {
+    user_id: 'user-1',
+    role: 'admin',
+    name: 'Alice',
+    displayUsername: 'alice',
+    username: 'alice',
+  },
+], ['leftJoin', 'select', 'where', 'orderBy'])
 const postingPoliciesChain = createChain([], ['leftJoin', 'select', 'where', 'orderBy'])
 const getAvailableTagsForQuarry = jest.fn()
+const selectFrom = jest.fn()
 
 postingPoliciesChain.execute = jest.fn().mockResolvedValue([])
+teamMembersChain.execute = jest.fn().mockResolvedValue([
+  {
+    user_id: 'user-1',
+    role: 'admin',
+    name: 'Alice',
+    displayUsername: 'alice',
+    username: 'alice',
+  },
+])
 
 jest.mock('@/lib/auth', () => ({
   auth: {
@@ -44,14 +63,22 @@ jest.mock('next/headers', () => ({
 
 jest.mock('@/lib/db', () => ({
   db: {
-    selectFrom: jest.fn((table: string) => {
-      if (table === 'quarries') return quarryChain
-      if (table === 'quarry_members') return membershipChain
-      if (table === 'posting_policies') return postingPoliciesChain
-      throw new Error(`Unexpected table ${table}`)
-    }),
+    selectFrom: (table: string) => selectFrom(table),
   },
 }))
+
+beforeEach(() => {
+  selectFrom.mockReset()
+  selectFrom.mockImplementation((table: string) => {
+      if (table === 'quarries') return quarryChain
+      if (table === 'quarry_members') {
+        const quarryMemberCalls = selectFrom.mock.calls.filter(([calledTable]) => calledTable === 'quarry_members').length
+        return quarryMemberCalls === 1 ? teamMembersChain : membershipChain
+      }
+      if (table === 'posting_policies') return postingPoliciesChain
+      throw new Error(`Unexpected table ${table}`)
+  })
+})
 
 jest.mock('@/lib/tags', () => ({
   getAvailableTagsForQuarry: (...args: unknown[]) => getAvailableTagsForQuarry(...args),

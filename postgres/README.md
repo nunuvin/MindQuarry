@@ -1,17 +1,23 @@
 # Postgres Folder
 
-`postgres/` contains SQL used to bootstrap the local PostgreSQL side of MindQuarry.
+`postgres/` contains the SQL needed to bootstrap and evolve MindQuarry’s database.
 
-## How to setup for the first time
+MindQuarry uses two logical areas:
 
-To set up your Postgres database for MindQuarry, execute these files against your database in the following order:
+- `mqauth`: Better Auth tables
+- `mq_public`: application tables for queries, answers, messaging, moderation, notifications, follows, and search support
 
-1. `extensions.sql` - Enables necessary extensions (pgcrypto, unaccent, pg_trgm).
-2. `mqauth_init.sql` - Bootstraps the Better Auth core tables in the secure `mqauth` schema.
-3. `core_schema.sql` - Bootstraps all the extended MindQuarry Q&A, Moderation, Messaging, posting-policy, validation, and archive tables into the `mq_public` schema.
-4. `indexes.sql` - Adds the non-primary indexes used by search, moderation queue lookups, and messaging reads.
+## What Each File Does
 
-Example using `psql`:
+- `extensions.sql`: enables required extensions such as `pgcrypto`, `unaccent`, and `pg_trgm`
+- `mqauth_init.sql`: creates the Better Auth schema and seeds the deleted-user sentinel
+- `core_schema.sql`: creates the MindQuarry application tables
+- `indexes.sql`: adds non-primary indexes, including search-related indexes
+- `psql_update.sql`: additive upgrade path for existing databases
+
+## First-Time Setup
+
+Run these files in order against a new database:
 
 ```bash
 psql -U your_postgres_user -d mindquarry_db -f postgres/extensions.sql
@@ -20,49 +26,55 @@ psql -U your_postgres_user -d mindquarry_db -f postgres/core_schema.sql
 psql -U your_postgres_user -d mindquarry_db -f postgres/indexes.sql
 ```
 
-`mqauth_init.sql` now seeds a sentinel deleted-user account with id `-1`. The app uses that record when users delete their accounts so historical queries, answers, messages, and moderation references remain attached to a non-login system identity.
+`mqauth_init.sql` seeds a sentinel deleted-user record with id `-1`. When users delete their accounts, authored content is reassigned to that record instead of being orphaned or hard-deleted.
 
-## Session Maintenance
+## Upgrading An Existing Database
 
-Expired Better Auth sessions are no longer cleaned up with `pg_cron`. Run the Node-based maintenance command from `mindquarry/` on a schedule instead:
-
-```bash
-npm run sessions:cleanup
-```
-
-For a long-running Node process, use:
-
-```bash
-npm run sessions:watch
-```
-
-You can override the poll interval for the watch mode with `SESSION_CLEANUP_INTERVAL_MS`.
-
-MindQuarry intentionally avoids Windows-incompatible scheduling extensions such as `pg_cron`, and does not require the `vector` extension for local setup.
-
-## Existing Installations
-
-The `core_schema.sql` script uses `IF NOT EXISTS` for all tables, making it safe to run against an existing database that already has the `mqauth_init.sql` schema applied.
-
-For existing databases, run the additive upgrade script instead of replaying scratch files:
+Use the additive upgrade script for an existing installation:
 
 ```bash
 psql -U your_postgres_user -d mindquarry_db -f postgres/psql_update.sql
 ```
 
-`psql_update.sql` now attempts to create the required `pgcrypto`, `unaccent`, and `pg_trgm` extensions before applying schema and index changes. If your application database role cannot run `CREATE EXTENSION`, apply `postgres/extensions.sql` first with a superuser or another role that has extension privileges, then rerun `psql_update.sql`.
+The upgrade path now covers:
 
-That update path adds:
-
-- the deleted-user sentinel seed
+- deleted-user support
 - quarry `content_review_mode`
-- query and answer validation metadata
-- archived-thread columns
+- query and answer validation fields
+- archived-thread fields
 - hidden-message metadata
-- the `posting_policies` table and moderation indexes
+- posting policies and moderation indexes
+- newer search/index updates
 
-Ensure your `DATABASE_URL` in `.env` is set correctly:
+`psql_update.sql` attempts to create `pgcrypto`, `unaccent`, and `pg_trgm` if they are missing. If the app role cannot create extensions, run `extensions.sql` first with a role that has extension privileges and then rerun `psql_update.sql`.
 
+The trigram-index update path is also careful about extension schema placement. Some PostgreSQL installs expose `gin_trgm_ops` outside the app search path, so the upgrade and index scripts now resolve the extension schema dynamically instead of assuming the operator class is globally visible.
+
+## Session Maintenance
+
+MindQuarry intentionally avoids Windows-hostile scheduler extensions such as `pg_cron`.
+
+Instead, clean up expired Better Auth sessions from the app folder with:
+
+```bash
+cd mindquarry
+npm run sessions:cleanup
 ```
+
+For a long-running watcher:
+
+```bash
+npm run sessions:watch
+```
+
+You can override the watch interval with `SESSION_CLEANUP_INTERVAL_MS`.
+
+## Connection Notes
+
+The app-side PostgreSQL connection sets `search_path=mq_public,mqauth` so auth and product tables resolve consistently.
+
+Example:
+
+```env
 DATABASE_URL="postgres://mqauth_user:your_strong_password_here@localhost:5432/mindquarry_db"
 ```

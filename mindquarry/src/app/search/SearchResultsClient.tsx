@@ -39,6 +39,29 @@ function hasAnyResults(state: SearchResponse | null) {
     return Boolean(state && (state.users.items.length > 0 || state.quarries.items.length > 0 || state.queries.items.length > 0));
 }
 
+const ACCESS_DECORATION: Record<string, { card: string; label: string }> = {
+    public: {
+        card: "border-zinc-400/50 dark:border-zinc-500/60",
+        label: "Visible to everyone",
+    },
+    authenticated: {
+        card: "border-white/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]",
+        label: "Visible to signed-in users",
+    },
+    members: {
+        card: "border-sky-500/55 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.3)]",
+        label: "Visible by quarry membership",
+    },
+    admin: {
+        card: "border-red-500/60 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.35)]",
+        label: "Visible because you are an instance admin",
+    },
+};
+
+function getAccessDecoration(accessLevel: string) {
+    return ACCESS_DECORATION[accessLevel] || ACCESS_DECORATION.public;
+}
+
 export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) {
     const [results, setResults] = useState<SearchState>(null);
     const [isLoadingInitial, setIsLoadingInitial] = useState(false);
@@ -184,37 +207,50 @@ export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) 
 
     if (!trimmedQuery) {
         return (
-            <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
+            <div className="rounded-[28px] border border-dashed border-border/80 bg-muted/20 p-12 text-center text-sm font-semibold text-muted-foreground">
                 Enter a term to search the platform.
             </div>
         );
     }
 
     if (isLoadingInitial) {
-        return <div className="p-12 text-center font-bold text-muted-foreground">Loading search results...</div>;
+        return <div className="rounded-[28px] border border-border/70 bg-muted/20 p-12 text-center text-sm font-semibold text-muted-foreground">Loading search results...</div>;
     }
 
     return (
         <div className="space-y-8">
             {error && <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-600">{error}</div>}
 
+            {results && hasAnyResults(results) && (
+                <div className="rounded-[24px] border border-border/70 bg-muted/20 px-4 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    <span className="mr-3">Edge legend</span>
+                    <span className="mr-3 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-zinc-400" /> Everyone</span>
+                    <span className="mr-3 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-white ring-1 ring-zinc-300" /> Signed-in</span>
+                    <span className="mr-3 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-sky-500" /> Membership</span>
+                    <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Admin</span>
+                </div>
+            )}
+
             {showQuarries && results && (
                 <section className="space-y-4">
                     <div className="flex items-center justify-between gap-4">
-                        <h2 className="font-black uppercase text-muted-foreground">Quarries</h2>
+                        <h2 className="font-display text-2xl font-semibold tracking-tight">Quarries</h2>
                         {results.quarries.nextOffset && (
-                            <button type="button" onClick={() => loadMore("quarries")} disabled={isLoadingQuarries} className="text-sm font-bold text-sky-600 hover:underline disabled:opacity-60">
+                            <button type="button" onClick={() => loadMore("quarries")} disabled={isLoadingQuarries} className="text-sm font-semibold text-sky-600 hover:underline disabled:opacity-60">
                                 {isLoadingQuarries ? "Loading..." : "Show 5 more"}
                             </button>
                         )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {results.quarries.items.map((quarry: SearchQuarryResult) => (
-                            <Link href={`/q/${quarry.name}`} key={quarry.id} className="p-4 border-2 border-black dark:border-white bg-card shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] hover:-translate-y-1 transition-transform">
-                                <h3 className="font-bold text-lg text-blue-500">q/{quarry.name}</h3>
-                                <p className="text-sm text-muted-foreground line-clamp-2">{quarry.description}</p>
-                            </Link>
-                        ))}
+                        {results.quarries.items.map((quarry: SearchQuarryResult) => {
+                            const decoration = getAccessDecoration(quarry.accessLevel);
+                            return (
+                                <Link href={`/q/${quarry.name}`} key={quarry.id} data-access-level={quarry.accessLevel} title={decoration.label} className={`soft-card p-5 transition-transform hover:-translate-y-0.5 ${decoration.card}`}>
+                                    <h3 className="font-display text-xl font-semibold tracking-tight text-sky-600 dark:text-sky-400">q/{quarry.name}</h3>
+                                    <p className="mt-2 text-sm leading-6 text-muted-foreground line-clamp-2">{quarry.description}</p>
+                                </Link>
+                            );
+                        })}
                         {results.quarries.items.length === 0 && <p className="text-sm font-semibold text-muted-foreground">No matching quarries.</p>}
                     </div>
                 </section>
@@ -223,9 +259,9 @@ export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) 
             {showUsers && results && (
                 <section className="space-y-4">
                     <div className="flex items-center justify-between gap-4">
-                        <h2 className="font-black uppercase text-muted-foreground">Users</h2>
+                        <h2 className="font-display text-2xl font-semibold tracking-tight">Users</h2>
                         {results.users.nextOffset && (
-                            <button type="button" onClick={() => loadMore("users")} disabled={isLoadingUsers} className="text-sm font-bold text-sky-600 hover:underline disabled:opacity-60">
+                            <button type="button" onClick={() => loadMore("users")} disabled={isLoadingUsers} className="text-sm font-semibold text-sky-600 hover:underline disabled:opacity-60">
                                 {isLoadingUsers ? "Loading..." : "Show 5 more"}
                             </button>
                         )}
@@ -233,8 +269,9 @@ export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {results.users.items.map((user: SearchUserResult) => {
                             const href = user.username ? `/users/${encodeURIComponent(user.username)}` : "/settings";
+                            const decoration = getAccessDecoration(user.accessLevel);
                             return (
-                                <Link href={href} key={user.id} className="soft-card p-5">
+                                <Link href={href} key={user.id} data-access-level={user.accessLevel} title={decoration.label} className={`soft-card p-5 ${decoration.card}`}>
                                     <p className="font-display text-lg font-semibold tracking-tight">{user.displayUsername || user.username || user.name}</p>
                                     <p className="mt-2 text-sm text-muted-foreground">@{user.username || user.id}</p>
                                     {user.name && <p className="mt-1 text-sm text-muted-foreground">{user.name}</p>}
@@ -248,28 +285,31 @@ export function SearchResultsClient({ initialQuery }: SearchResultsClientProps) 
 
             {showQueries && results && (
                 <section className="space-y-6">
-                    <h2 className="font-black uppercase text-muted-foreground">Threads</h2>
-                    {results.queries.items.map((query: SearchQueryResult) => (
-                        <article key={query.id} className="p-4 border-[3px] border-black dark:border-white flex gap-4 bg-card">
-                            <div className="flex flex-col items-center justify-start min-w-[60px] p-2 bg-muted/30">
-                                <span className="font-black text-lg">{query.score}</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-xs font-bold mb-1 text-blue-500">q/{query.quarry_name}</div>
-                                <Link href={`/q/${query.quarry_name}/query/${query.id}`} className="text-xl font-bold hover:underline mb-2 block line-clamp-2">
-                                    {query.title}
-                                </Link>
-                                <p className="text-muted-foreground line-clamp-4 text-sm mb-4 break-words">
-                                    {getRichTextPreview(query.body || query.answer_match_preview || "") || "No details provided."}
-                                </p>
-                                <p className="text-xs font-semibold text-muted-foreground">
-                                    {query.answer_match_preview ? "Matched in an answer or reply" : "Matched in the thread body"}
-                                </p>
-                            </div>
-                        </article>
-                    ))}
+                    <h2 className="font-display text-2xl font-semibold tracking-tight">Queries</h2>
+                    {results.queries.items.map((query: SearchQueryResult) => {
+                        const decoration = getAccessDecoration(query.accessLevel);
+                        return (
+                            <article key={query.id} data-access-level={query.accessLevel} title={decoration.label} className={`soft-card flex gap-4 p-5 ${decoration.card}`}>
+                                <div className="flex min-w-[64px] flex-col items-center justify-start rounded-[20px] border border-border/70 bg-muted/30 p-3">
+                                    <span className="text-lg font-semibold">{query.score}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-400">q/{query.quarry_name}</div>
+                                    <Link href={`/q/${query.quarry_name}/query/${query.id}`} className="mb-2 block font-display text-2xl font-semibold tracking-tight hover:underline line-clamp-2">
+                                        {query.title}
+                                    </Link>
+                                    <p className="mb-4 break-words text-sm leading-7 text-muted-foreground line-clamp-4">
+                                        {getRichTextPreview(query.body || query.answer_match_preview || "") || "No details provided."}
+                                    </p>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                        {query.answer_match_preview ? "Matched in an answer" : "Matched in the query body"}
+                                    </p>
+                                </div>
+                            </article>
+                        );
+                    })}
                     {results.queries.items.length === 0 && !hasAnyResults(results) && (
-                        <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
+                        <div className="rounded-[28px] border border-dashed border-border/80 bg-muted/20 p-12 text-center text-sm font-semibold text-muted-foreground">
                             No results found for <span className="font-semibold">{trimmedQuery}</span>.
                         </div>
                     )}

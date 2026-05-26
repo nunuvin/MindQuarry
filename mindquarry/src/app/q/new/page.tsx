@@ -92,7 +92,7 @@ export default async function NewQuarryPage() {
                     </div>
                     <div>
                         <label className="mb-2 block text-sm font-semibold">Visibility</label>
-                        <select name="visibility" defaultValue="public" className="w-full rounded-2xl border border-border px-4 py-3 outline-none focus:ring-2 focus:ring-sky-500">
+                        <select name="visibility" defaultValue="public" className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-foreground outline-none focus:ring-2 focus:ring-sky-500">
                             <option value="public">Public</option>
                             <option value="authenticated">Signed-in users only</option>
                             <option value="members">Members only</option>

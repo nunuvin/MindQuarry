@@ -7,6 +7,7 @@ import CookieNotice from "@/components/cookie-notice";
 import ThemeProvider from "@/components/theme-provider";
 import { MindQuarryConfig } from "@/lib/config";
 import { getSiteSettings } from "@/lib/settings";
+import { listQuarryNavigationOptions } from "@/lib/quarries";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 
@@ -27,6 +28,7 @@ export default async function RootLayout({
     const session = await auth.api.getSession({ headers: rawHeaders });
     const settings = await getSiteSettings();
     const isGlobalAdmin = session?.user?.id === settings?.first_admin_user_id;
+    const adminQuarries = isGlobalAdmin ? await listQuarryNavigationOptions() : [];
 
     return (
         <html lang="en" suppressHydrationWarning className={`${bodyFont.variable} ${displayFont.variable}`}>
@@ -42,7 +44,7 @@ export default async function RootLayout({
                         notificationPollIntervalMs={MindQuarryConfig.NOTIFICATIONS.POLL_INTERVAL_MS}
                     />
                     <div className="flex flex-1">
-                        <Sidebar isGlobalAdmin={isGlobalAdmin} />
+                        <Sidebar isGlobalAdmin={isGlobalAdmin} adminQuarries={adminQuarries} />
                         <main className="relative flex-1 w-full overflow-x-hidden">
                             {children}
                         </main>

@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { canModerateQuarry, upsertPostingPolicy } from "@/lib/moderation";
+import { generateUUID, richTextToPlainText } from "@/lib/utils";
 
 export default async function QuarryModQueuePage({ params }: { params: Promise<{ name: string }> }) {
     const rawHeaders = await headers();
@@ -101,7 +102,16 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
 
         const id = formData.get("id") as string;
         await db.updateTable("user_reports").set({ status: "dismissed" }).where("id", "=", id).execute();
+        await db.insertInto("mod_actions").values({
+            id: generateUUID(),
+            quarry_id: quarry!.id,
+            moderator_id: session.user.id,
+            target_type: "report",
+            target_id: id,
+            action_type: "dismiss_report",
+        }).execute();
         revalidatePath(`/q/${quarry!.name}/mod/queue`);
+        revalidatePath(`/q/${quarry!.name}/mod/history`);
     }
 
     async function hideItem(formData: FormData) {
@@ -121,8 +131,18 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
             await db.updateTable("answers").set({ is_hidden: true, hidden_at: new Date(), hidden_by_id: session.user.id }).where("id", "=", targetId).execute();
         }
 
+        await db.insertInto("mod_actions").values({
+            id: generateUUID(),
+            quarry_id: quarry!.id,
+            moderator_id: session.user.id,
+            target_type: targetType,
+            target_id: targetId,
+            action_type: "hide_content",
+        }).execute();
+
         await db.updateTable("user_reports").set({ status: "actioned" }).where("target_id", "=", targetId).where("target_type", "=", targetType).execute();
         revalidatePath(`/q/${quarry!.name}/mod/queue`);
+        revalidatePath(`/q/${quarry!.name}/mod/history`);
     }
 
     async function escalateReport(formData: FormData) {
@@ -137,7 +157,16 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
         const targetType = formData.get("target_type") as string;
 
         await db.updateTable("user_reports").set({ status: "escalated", quarry_id: null }).where("target_id", "=", targetId).where("target_type", "=", targetType).execute();
+        await db.insertInto("mod_actions").values({
+            id: generateUUID(),
+            quarry_id: quarry!.id,
+            moderator_id: session.user.id,
+            target_type: targetType,
+            target_id: targetId,
+            action_type: "escalate_report",
+        }).execute();
         revalidatePath(`/q/${quarry!.name}/mod/queue`);
+        revalidatePath(`/q/${quarry!.name}/mod/history`);
     }
 
     async function approvePending(formData: FormData) {
@@ -163,8 +192,18 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                 .execute();
         }
 
+        await db.insertInto("mod_actions").values({
+            id: generateUUID(),
+            quarry_id: quarry!.id,
+            moderator_id: session.user.id,
+            target_type: targetType,
+            target_id: targetId,
+            action_type: "approve_pending",
+        }).execute();
+
         revalidatePath(`/q/${quarry!.name}/mod/queue`);
         revalidatePath(`/q/${quarry!.name}`);
+        revalidatePath(`/q/${quarry!.name}/mod/history`);
     }
 
     async function applyUserRestriction(formData: FormData) {
@@ -205,87 +244,104 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
             canPostAnswers,
         });
 
+        await db.insertInto("mod_actions").values({
+            id: generateUUID(),
+            quarry_id: quarry!.id,
+            moderator_id: session.user.id,
+            target_type: "user",
+            target_id: targetUserId,
+            action_type: preset,
+        }).execute();
+
         revalidatePath(`/q/${quarry!.name}/mod/queue`);
         revalidatePath(`/q/${quarry!.name}/settings`);
+        revalidatePath(`/q/${quarry!.name}/mod/history`);
     }
 
     return (
-        <div className="max-w-6xl mx-auto mt-8 p-4">
-            <Link href={`/q/${quarry.name}`} className="text-sm font-bold text-muted-foreground hover:underline mb-4 inline-block">&larr; Back to q/{quarry.name}</Link>
+        <div className="page-shell max-w-6xl">
+            <Link href={`/q/${quarry.name}`} className="soft-button mb-4 gap-2 rounded-full px-4 py-2">&larr; Back to q/{quarry.name}</Link>
 
-            <div className="p-8 bg-card border-[3px] border-black dark:border-white shadow-[8px_8px_0_0_#000] dark:shadow-[8px_8px_0_0_#fff]">
-                <div className="flex justify-between items-center mb-8 border-b-[3px] border-black dark:border-white pb-2">
-                    <h1 className="text-3xl font-black uppercase tracking-tight">Mod Queue</h1>
-                    <Link href={`/q/${quarry.name}/mod/history`} className="text-blue-500 font-bold hover:underline">View History</Link>
+            <div className="soft-panel p-6 sm:p-8">
+                <div className="mb-8 flex flex-col gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-400">Moderation</p>
+                        <h1 className="font-display mt-2 text-3xl font-semibold tracking-tight">Mod Queue</h1>
+                    </div>
+                    <Link href={`/q/${quarry.name}/mod/history`} className="soft-button rounded-full px-4 py-2">View History</Link>
                 </div>
 
                 <div className="space-y-8">
                     {(pendingQueries.length > 0 || pendingAnswers.length > 0) && (
                         <section className="space-y-6">
-                            <h2 className="font-black uppercase text-muted-foreground">Pending Review</h2>
+                            <h2 className="font-display text-2xl font-semibold tracking-tight">Pending Review</h2>
 
                             {pendingQueries.map((pendingQuery) => (
-                                <div key={pendingQuery.id} className="grid grid-cols-1 gap-6 border-[3px] border-amber-500/40 bg-amber-500/5 p-4">
-                                    <div>
-                                        <div className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Query awaiting approval</div>
-                                        <h3 className="text-lg font-bold">{pendingQuery.title}</h3>
+                                <div key={pendingQuery.id} className="grid gap-6 rounded-[28px] border border-amber-500/30 bg-amber-500/5 p-5 lg:grid-cols-[1.3fr_0.7fr]">
+                                    <div className="min-w-0">
+                                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Query awaiting approval</div>
+                                        <h3 className="font-display text-2xl font-semibold tracking-tight">{pendingQuery.title}</h3>
                                         <p className="mt-2 text-sm text-muted-foreground">By {pendingQuery.displayUsername || pendingQuery.username || pendingQuery.name}</p>
-                                        <div className="mt-4 whitespace-pre-wrap text-sm text-muted-foreground">{pendingQuery.body}</div>
+                                        <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{richTextToPlainText(pendingQuery.body || "")}</div>
                                     </div>
-                                    <div className="flex flex-wrap gap-3 text-sm font-semibold">
-                                        <form action={approvePending}>
-                                            <input type="hidden" name="target_id" value={pendingQuery.id} />
-                                            <input type="hidden" name="target_type" value="query" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white">Approve</button>
-                                        </form>
-                                        <form action={hideItem}>
-                                            <input type="hidden" name="target_id" value={pendingQuery.id} />
-                                            <input type="hidden" name="target_type" value="query" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white">Hide</button>
-                                        </form>
-                                        <form action={applyUserRestriction}>
-                                            <input type="hidden" name="user_id" value={pendingQuery.author_id || ""} />
-                                            <input type="hidden" name="preset" value="review_all" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-amber-600 text-amber-700 hover:bg-amber-600 hover:text-white">Require Review</button>
-                                        </form>
-                                        <form action={applyUserRestriction}>
-                                            <input type="hidden" name="user_id" value={pendingQuery.author_id || ""} />
-                                            <input type="hidden" name="preset" value="silence_all" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-black dark:border-white">Silence User</button>
-                                        </form>
+                                    <div className="rounded-[24px] border border-border/70 bg-card/80 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Decision</p>
+                                        <div className="mt-4 space-y-3">
+                                            <form action={approvePending}>
+                                                <input type="hidden" name="target_id" value={pendingQuery.id} />
+                                                <input type="hidden" name="target_type" value="query" />
+                                                <button type="submit" className="soft-button-primary w-full justify-center rounded-full py-3">Approve</button>
+                                            </form>
+                                            <form action={hideItem}>
+                                                <input type="hidden" name="target_id" value={pendingQuery.id} />
+                                                <input type="hidden" name="target_type" value="query" />
+                                                <button type="submit" className="w-full rounded-full border border-red-500/40 px-4 py-3 text-sm font-semibold text-red-500 hover:bg-red-500 hover:text-white">Hide</button>
+                                            </form>
+                                            <form action={applyUserRestriction} className="space-y-3">
+                                                <input type="hidden" name="user_id" value={pendingQuery.author_id || ""} />
+                                                <select name="preset" defaultValue="review_all" className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-sky-500">
+                                                    <option value="review_all">Require review</option>
+                                                    <option value="silence_answers">Silence answers</option>
+                                                    <option value="silence_all">Silence user</option>
+                                                </select>
+                                                <button type="submit" className="soft-button w-full justify-center rounded-full py-3">Apply restriction</button>
+                                            </form>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
 
                             {pendingAnswers.map((pendingAnswer) => (
-                                <div key={pendingAnswer.id} className="grid grid-cols-1 gap-6 border-[3px] border-amber-500/40 bg-amber-500/5 p-4">
-                                    <div>
-                                        <div className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Answer awaiting approval</div>
-                                        <div className="text-sm font-semibold text-muted-foreground">Thread: {pendingAnswer.query_title}</div>
+                                <div key={pendingAnswer.id} className="grid gap-6 rounded-[28px] border border-amber-500/30 bg-amber-500/5 p-5 lg:grid-cols-[1.3fr_0.7fr]">
+                                    <div className="min-w-0">
+                                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Answer awaiting approval</div>
+                                        <div className="text-sm font-semibold text-muted-foreground">Query: {pendingAnswer.query_title}</div>
                                         <p className="mt-2 text-sm text-muted-foreground">By {pendingAnswer.displayUsername || pendingAnswer.username || pendingAnswer.name}</p>
-                                        <div className="mt-4 whitespace-pre-wrap text-sm text-muted-foreground">{pendingAnswer.body}</div>
+                                        <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{richTextToPlainText(pendingAnswer.body || "")}</div>
                                     </div>
-                                    <div className="flex flex-wrap gap-3 text-sm font-semibold">
-                                        <form action={approvePending}>
-                                            <input type="hidden" name="target_id" value={pendingAnswer.id} />
-                                            <input type="hidden" name="target_type" value="answer" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white">Approve</button>
-                                        </form>
-                                        <form action={hideItem}>
-                                            <input type="hidden" name="target_id" value={pendingAnswer.id} />
-                                            <input type="hidden" name="target_type" value="answer" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white">Hide</button>
-                                        </form>
-                                        <form action={applyUserRestriction}>
-                                            <input type="hidden" name="user_id" value={pendingAnswer.author_id || ""} />
-                                            <input type="hidden" name="preset" value="review_all" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-amber-600 text-amber-700 hover:bg-amber-600 hover:text-white">Require Review</button>
-                                        </form>
-                                        <form action={applyUserRestriction}>
-                                            <input type="hidden" name="user_id" value={pendingAnswer.author_id || ""} />
-                                            <input type="hidden" name="preset" value="silence_answers" />
-                                            <button type="submit" className="px-4 py-2 border-2 border-black dark:border-white">Silence Answers</button>
-                                        </form>
+                                    <div className="rounded-[24px] border border-border/70 bg-card/80 p-4">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Decision</p>
+                                        <div className="mt-4 space-y-3">
+                                            <form action={approvePending}>
+                                                <input type="hidden" name="target_id" value={pendingAnswer.id} />
+                                                <input type="hidden" name="target_type" value="answer" />
+                                                <button type="submit" className="soft-button-primary w-full justify-center rounded-full py-3">Approve</button>
+                                            </form>
+                                            <form action={hideItem}>
+                                                <input type="hidden" name="target_id" value={pendingAnswer.id} />
+                                                <input type="hidden" name="target_type" value="answer" />
+                                                <button type="submit" className="w-full rounded-full border border-red-500/40 px-4 py-3 text-sm font-semibold text-red-500 hover:bg-red-500 hover:text-white">Hide</button>
+                                            </form>
+                                            <form action={applyUserRestriction} className="space-y-3">
+                                                <input type="hidden" name="user_id" value={pendingAnswer.author_id || ""} />
+                                                <select name="preset" defaultValue="review_all" className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-sky-500">
+                                                    <option value="review_all">Require review</option>
+                                                    <option value="silence_answers">Silence answers</option>
+                                                    <option value="silence_all">Silence user</option>
+                                                </select>
+                                                <button type="submit" className="soft-button w-full justify-center rounded-full py-3">Apply restriction</button>
+                                            </form>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -297,70 +353,60 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                         const repeatCount = group.length;
 
                         return (
-                            <div key={r.id} className="grid grid-cols-1 md:grid-cols-3 gap-6 border-[3px] border-black dark:border-white p-4 shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] relative">
+                            <div key={r.id} className="relative grid gap-6 rounded-[28px] border border-border/70 bg-card/90 p-5 lg:grid-cols-[1.25fr_0.75fr]">
                                 {repeatCount > 1 && (
-                                    <div className="absolute -top-3 -right-3 bg-red-500 text-white font-black px-3 py-1 border-[3px] border-black dark:border-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]">
+                                    <div className="absolute -right-2 -top-2 rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
                                         {repeatCount} REPORTS
                                     </div>
                                 )}
-                                <div className="md:col-span-2">
-                                    <h3 className="font-black uppercase text-lg mb-2">Reported Content ({r.target_type})</h3>
-                                    <div className="p-4 bg-muted/30 border-l-4 border-red-500 whitespace-pre-wrap font-medium text-sm mb-4 flex flex-col gap-4">
+                                <div>
+                                    <h3 className="font-display mb-2 text-2xl font-semibold tracking-tight">Reported {r.target_type}</h3>
+                                    <div className="mb-4 flex flex-col gap-4 rounded-[24px] border border-red-500/20 bg-red-500/5 p-4 text-sm">
                                         {group.map(report => (
                                             <div key={report.id} className="border-b-2 border-black/10 dark:border-white/10 pb-4 last:border-0 last:pb-0">
-                                                <span className="font-bold text-xs uppercase text-muted-foreground block mb-1">Reason from {report.reporter_username || report.reporter_name}</span>
+                                                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Reason from {report.reporter_username || report.reporter_name}</span>
                                                 {report.reason}
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="flex gap-4 flex-wrap">
+                                </div>
+
+                                <div className="rounded-[24px] border border-border/70 bg-muted/20 p-4">
+                                    <div className="mb-4">
+                                        <h4 className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Reported User</h4>
+                                        <div className="text-lg font-semibold">{r.reported_username || r.reported_name}</div>
+                                        {r.reported_username ? (
+                                            <a href={`/users/${r.reported_username}`} target="_blank" rel="noreferrer" className="text-xs text-sky-600 hover:underline">View Profile &rarr;</a>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground">Profile link unavailable</span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Decision</p>
+                                    <div className="mt-4 space-y-3">
                                         <form action={dismissReport}>
                                             <input type="hidden" name="id" value={r.id} />
-                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-black dark:border-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black cursor-pointer shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]">
-                                                Dismiss All
-                                            </button>
+                                            <button type="submit" className="soft-button w-full justify-center rounded-full py-3">Dismiss</button>
                                         </form>
                                         <form action={hideItem}>
                                             <input type="hidden" name="id" value={r.id} />
                                             <input type="hidden" name="target_id" value={r.target_id || ''} />
                                             <input type="hidden" name="target_type" value={r.target_type || ''} />
-                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#ef4444]">
-                                                Hide Content
-                                            </button>
+                                            <button type="submit" className="w-full rounded-full border border-red-500/40 px-4 py-3 text-sm font-semibold text-red-500 hover:bg-red-500 hover:text-white">Hide content</button>
                                         </form>
                                         <form action={escalateReport}>
                                             <input type="hidden" name="target_id" value={r.target_id || ''} />
                                             <input type="hidden" name="target_type" value={r.target_type || ''} />
-                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white cursor-pointer shadow-[2px_2px_0_0_#f97316]">
-                                                Escalate to Global
-                                            </button>
+                                            <button type="submit" className="w-full rounded-full border border-amber-500/40 px-4 py-3 text-sm font-semibold text-amber-600 hover:bg-amber-500 hover:text-white">Escalate</button>
                                         </form>
-                                        <form action={applyUserRestriction}>
+                                        <form action={applyUserRestriction} className="space-y-3">
                                             <input type="hidden" name="user_id" value={r.reported_id || ''} />
-                                            <input type="hidden" name="preset" value="review_all" />
-                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-amber-600 text-amber-700 hover:bg-amber-600 hover:text-white">
-                                                Require Review
-                                            </button>
+                                            <select name="preset" defaultValue="review_all" className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-sky-500">
+                                                <option value="review_all">Require review</option>
+                                                <option value="silence_answers">Silence answers</option>
+                                                <option value="silence_all">Silence user</option>
+                                            </select>
+                                            <button type="submit" className="soft-button w-full justify-center rounded-full py-3">Apply restriction</button>
                                         </form>
-                                        <form action={applyUserRestriction}>
-                                            <input type="hidden" name="user_id" value={r.reported_id || ''} />
-                                            <input type="hidden" name="preset" value="silence_all" />
-                                            <button type="submit" className="px-4 py-2 font-bold border-2 border-black dark:border-white">
-                                                Silence User
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-
-                                <div className="border-l-2 border-black/20 dark:border-white/20 pl-6 flex flex-col justify-start">
-                                    <div className="mb-4">
-                                        <h4 className="font-bold text-xs uppercase text-muted-foreground mb-1">Reported User</h4>
-                                        <div className="font-bold text-lg">{r.reported_username || r.reported_name}</div>
-                                        {r.reported_username ? (
-                                            <a href={`/users/${r.reported_username}`} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline">View Profile &rarr;</a>
-                                        ) : (
-                                            <span className="text-xs text-muted-foreground">Profile link unavailable</span>
-                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -368,7 +414,7 @@ export default async function QuarryModQueuePage({ params }: { params: Promise<{
                     })}
 
                     {uniqueReports.length === 0 && pendingQueries.length === 0 && pendingAnswers.length === 0 && (
-                        <div className="p-12 text-center border-2 border-dashed border-muted-foreground font-bold text-muted-foreground">
+                        <div className="rounded-[28px] border border-dashed border-border/80 bg-muted/20 p-12 text-center text-sm font-semibold text-muted-foreground">
                             The moderation queue is empty.
                         </div>
                     )}

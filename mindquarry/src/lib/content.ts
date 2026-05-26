@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { DELETED_MESSAGE_TOMBSTONE } from "./messageContent";
 import { refreshProfileMetrics } from "./notifications";
 
 export async function updateQueryByAuthor(options: {
@@ -96,32 +97,20 @@ export async function deleteMessageBySender(options: {
             return null;
         }
 
-        const conversation = await trx.selectFrom("conversations")
-            .select(["id", "created_at"])
-            .where("id", "=", message.conversation_id)
-            .executeTakeFirst();
-
-        let deleteQuery = trx.deleteFrom("messages")
+        let updateQuery = trx.updateTable("messages")
+            .set({
+                body: DELETED_MESSAGE_TOMBSTONE,
+                is_hidden: false,
+                hidden_at: null,
+                hidden_by_id: null,
+            })
             .where("id", "=", message.id);
 
         if (!options.allowModeratorDelete) {
-            deleteQuery = deleteQuery.where("sender_id", "=", options.userId);
+            updateQuery = updateQuery.where("sender_id", "=", options.userId);
         }
 
-        await deleteQuery.execute();
-
-        const latestRemainingMessage = await trx.selectFrom("messages")
-            .select("created_at")
-            .where("conversation_id", "=", message.conversation_id)
-            .orderBy("created_at", "desc")
-            .executeTakeFirst();
-
-        await trx.updateTable("conversations")
-            .set({
-                updated_at: latestRemainingMessage?.created_at || conversation?.created_at || new Date(),
-            })
-            .where("id", "=", message.conversation_id)
-            .execute();
+        await updateQuery.execute();
 
         return message.conversation_id;
     });

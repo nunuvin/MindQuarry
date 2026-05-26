@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test('search page renders its empty prompt', async ({ page }) => {
   await page.goto('/search')
 
-  await expect(page.getByRole('heading', { name: 'Search Results' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Find quarries, queries, and people' })).toBeVisible()
   await expect(page.getByText('Enter a term to search the platform.')).toBeVisible()
 })
 

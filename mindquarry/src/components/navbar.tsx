@@ -18,6 +18,7 @@ export default function Navbar({
     const user = session?.user ?? null;
     const pathname = usePathname();
     const [notificationCount, setNotificationCount] = useState(0);
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
 
     useEffect(() => {
         if (!user) {
@@ -68,13 +69,18 @@ export default function Navbar({
                         <Input
                             type="search"
                             name="q"
-                            placeholder="Search questions, communities, or people"
+                            placeholder="Search quarries, queries, or users"
                             className="h-12 border-0 bg-transparent pl-14 pr-14 text-sm shadow-none focus-visible:ring-0 md:text-base"
+                            onFocus={() => setIsSearchFocused(true)}
+                            onBlur={() => setIsSearchFocused(false)}
                         />
                         <button type="submit" className="absolute right-2 flex h-9 w-9 items-center justify-center rounded-full border border-border/80 bg-background text-muted-foreground transition hover:border-sky-400/70 hover:text-foreground">
                             <CornerDownLeft className="h-4 w-4" />
                         </button>
                     </form>
+                    {isSearchFocused && (
+                        <p className="mt-2 pl-4 text-xs font-semibold text-muted-foreground">Use <span className="text-foreground">u:</span> for users, <span className="text-foreground">q:</span> for quarries, and <span className="text-foreground">p:</span> or <span className="text-foreground">query:</span> for queries.</p>
+                    )}
                 </div>
 
                 <div className="ml-auto flex items-center gap-3">
@@ -99,7 +105,7 @@ export default function Navbar({
                     <Input
                         type="search"
                         name="q"
-                        placeholder="Search MindQuarry"
+                        placeholder="Search quarries, queries, or users"
                         className="h-11 border-0 bg-transparent pl-14 pr-14 text-sm shadow-none focus-visible:ring-0"
                     />
                     <button type="submit" className="absolute right-2 flex h-8 w-8 items-center justify-center rounded-full border border-border/80 bg-background text-muted-foreground transition hover:border-sky-400/70 hover:text-foreground">

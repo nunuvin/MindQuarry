@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { isGlobalAdmin } from "@/lib/admin";
 import { auth } from "@/lib/auth";
 import { MindQuarryConfig } from "@/lib/config";
 import { isRateLimited } from "@/lib/rateLimit";
@@ -24,6 +25,7 @@ function parseSection(value: string | null) {
 
 export async function GET(request: NextRequest) {
     const session = await auth.api.getSession({ headers: request.headers });
+    const viewerIsGlobalAdmin = session?.user?.id ? await isGlobalAdmin(session.user.id) : false;
     const rawQuery = request.nextUrl.searchParams.get("q") || "";
     const mode = parseMode(request.nextUrl.searchParams.get("mode"));
     const section = parseSection(request.nextUrl.searchParams.get("section"));
@@ -41,6 +43,7 @@ export async function GET(request: NextRequest) {
     const payload = await runSearch({
         rawQuery,
         viewerId: session?.user?.id,
+        viewerIsGlobalAdmin,
         mode,
         section,
         offset,

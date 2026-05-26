@@ -1,62 +1,121 @@
 # MindQuarry Workspace
 
-MindQuarry is a Stack Overflow-like Q&A application with community spaces, threaded discussions, moderation surfaces, and account-aware social features. This repository contains the Next.js app and the PostgreSQL bootstrap scripts used to run it locally.
+MindQuarry is a community-first Q&A product. It combines Stack Overflow-style knowledge exchange with named communities called quarries, richer moderation controls, profile visibility, direct messaging, follows, notifications, and instance-wide administration.
 
-## Workspace Layout
+This repository contains two main pieces:
 
-- `mindquarry/`: the web application.
-- `postgres/`: SQL files for local PostgreSQL setup and auth schema bootstrap.
-- `TODO.md`: scratch planning notes.
+- `mindquarry/`: the Next.js application.
+- `postgres/`: PostgreSQL bootstrap and upgrade scripts for the auth and app schemas.
 
-## Chosen Stack
+## What MindQuarry Does
 
-The application stack is defined by `mindquarry/package.json`:
+MindQuarry is built around topical communities and discussion threads:
+
+- Users browse and join quarries, then submit queries and answers with rich-text formatting.
+- Threads support voting, accepted answers, follows, mentions, notifications, and view tracking.
+- Profiles and communities support visibility controls, so some content is public, some is authenticated-only, and some is membership-scoped.
+- Messaging supports inbox, group conversations, read state, streaming updates, soft-deleted message tombstones, and admin moderation.
+- Quarry admins and moderators can work pending-review queues, hide content, review moderation history, and apply per-user posting restrictions.
+- Instance admins can manage users, search across admin-only content, and navigate directly into quarry moderation flows.
+
+## Current Feature Set
+
+The product already includes:
+
+- Better Auth login and signup with username-based auth.
+- Feed, community index, quarry detail pages, and full query discussion routes.
+- Rich-text authoring and sanitized rendering for queries, answers, and chat.
+- Search across users, quarries, and queries with `u:`, `q:`, `p:`, and `query:` prefixes.
+- Admin-aware search results with access-aware edge styling for public, signed-in, membership-only, and admin-only hits.
+- Query and answer voting, accepted answers, and per-thread subscriptions.
+- Follows, mentions, notifications, unread counts, and profile metrics.
+- Profile visibility and messaging privacy controls.
+- Direct messaging, group chats, read receipts, and event-driven refresh behavior.
+- Account self-deletion with authored content reassigned to the deleted-user sentinel instead of being orphaned.
+- Quarry moderation roles for admins and moderators.
+- Quarry and instance posting policies, including forced review and posting restrictions.
+- Pending review for new content, hidden-content recovery, archive flows, and role-aware query deletion rules.
+- Instance admin surfaces for user management, reports, and global moderation.
+- Shared shell behaviors such as the collapsible sidebar, theme toggle, cookie notice, and user menu.
+
+Still partial or intentionally pending:
+
+- Password reset and broader account recovery.
+- Deeper moderation analytics and longer-term audit tooling.
+- More exhaustive automated coverage across all page states and workflows.
+- More advanced search ranking and richer tag/discovery tuning.
+- Production-grade background scheduling beyond the current Node-driven maintenance tasks.
+
+## Stack
+
+The application currently uses:
 
 - Next.js 15 App Router
 - React 19
 - TypeScript 5
-- Better Auth for authentication
-- Kysely and `pg` for PostgreSQL access
+- Better Auth
+- Kysely with PostgreSQL
 - Tailwind CSS v4
-- shadcn/ui conventions with Radix primitives and Lucide icons
+- shadcn/ui-style patterns, Radix primitives, and Lucide icons
 
-## Current Status
+## Repository Layout
 
-Implemented:
+- `mindquarry/`: application code, scripts, tests, Playwright config, and app docs.
+- `postgres/`: scratch-safe SQL, upgrade SQL, and auth/app schema bootstrap files.
+- `mindquarry/src/app/`: routes, layouts, and route handlers.
+- `mindquarry/src/components/`: shared UI and interaction components.
+- `mindquarry/src/lib/`: shared auth, database, moderation, search, and helper code.
 
-- Better Auth with username and admin plugins, plus login and signup flows.
-- Feed, discovery sorting, community index, community detail, and query discussion routes.
-- Rich-text query and answer authoring with sanitized rendering.
-- Rich search across users, quarries, and threads, including `u:`, `q:`, and `query:` prefixes, paginated fetches, and answer-body matching.
-- Query and answer voting, per-thread subscriptions, and profile metric refresh on vote changes.
-- User follows, notification fan-out, mention notifications, unread notification counts, and a notifications page.
-- Public and restricted visibility rules for profiles and communities.
-- Direct messaging flows, including inbox, conversation pages, read tracking, streaming updates, and self-service message deletion.
-- Question editing plus answer editing and deletion using the same rich-text editor surfaces as initial creation.
-- Account deletion that preserves authored content by reassigning it to the sentinel deleted-user record in `mqauth.user`.
-- Community moderation roles for `admin` and `moderator`, including moderation queues, history views, pending-review approval, hidden-content recovery, and user-specific posting restrictions.
-- Community and instance posting policies that can force query-only or query-and-answer review, or silence posting per user.
-- Thread archival plus query deletion rules: authors can remove unanswered threads, while quarry admins can archive threads or delete threads that already have responses.
-- Admin and moderation entry points such as reports, user management surfaces, community queues, and admin-controlled direct-message hiding.
-- Shared shell behaviors including the notification bell, collapsible sidebar, dismissible home promo rail, cookie notice, and user menu.
-- App-level TOML configuration in `mindquarry/mq_config.toml` for adjustable limits, search page sizes, rate limits, and notices.
-- Query view counting limited to one increment per viewer per configured time window.
+## Setup
 
-Still missing or partial:
+### Prerequisites
 
-- Password reset and broader account recovery flows are not implemented yet.
-- Search and tagging now cover the main product path, but relevance tuning, richer ranking, and more exhaustive legacy-schema upgrade coverage still need work.
-- Several pages and flows still need deeper automated coverage despite the improved Jest and Playwright suites.
-- Moderation, admin tooling, and messaging are usable, but policy UX, audit depth, and broader regression coverage still need work.
-- Background work remains Node-script driven rather than a fuller production job orchestration setup.
+- Node.js 20+
+- npm
+- PostgreSQL 15+ with permission to create the required extensions or a superuser available to do it once
+
+### First-Time Local Setup
+
+1. Install app dependencies.
+
+```bash
+cd mindquarry
+npm install
+```
+
+2. Create a PostgreSQL database and run the scratch bootstrap in order.
+
+```bash
+psql -U your_postgres_user -d mindquarry_db -f postgres/extensions.sql
+psql -U your_postgres_user -d mindquarry_db -f postgres/mqauth_init.sql
+psql -U your_postgres_user -d mindquarry_db -f postgres/core_schema.sql
+psql -U your_postgres_user -d mindquarry_db -f postgres/indexes.sql
+```
+
+3. Create `mindquarry/.env` and point `DATABASE_URL` at that database.
+
+4. Optionally adjust `mindquarry/mq_config.toml` for search limits, rate limits, notification polling, cookie notice text, and view-count timing.
+
+5. Start the app.
+
+```bash
+cd mindquarry
+npm run dev
+```
+
+### Updating An Existing Database
+
+If the database already exists, apply the additive update script instead of replaying the scratch files.
+
+```bash
+psql -U your_postgres_user -d mindquarry_db -f postgres/psql_update.sql
+```
+
+That upgrade path now covers deleted-user support, moderation and posting-policy schema, validation/archive fields, hidden-message metadata, and search-related index updates.
 
 ## Testing And Verification
 
-The app currently has:
-
-- Granular Jest unit and route-handler coverage.
-- Playwright browser smoke coverage for auth, home-shell interactions, and the communities index.
-- A full verification script that runs build, Jest in-band, and Playwright.
+MindQuarry uses both Jest and Playwright.
 
 Common commands:
 
@@ -68,85 +127,25 @@ npm run test:e2e
 npm run verify
 ```
 
-## Local Setup
+For the dedicated testing guide, see [mindquarry/docs/testing/README.md](mindquarry/docs/testing/README.md).
 
-### New Installation
+## More Documentation
 
-1. Install dependencies in the Next app:
-   ```bash
-   cd mindquarry
-   npm install
-   ```
-
-2. Setup the database. See `postgres/README.md` for execution order.
-   ```bash
-   psql -U postgres -d your_db -f postgres/extensions.sql
-   psql -U postgres -d your_db -f postgres/mqauth_init.sql
-   psql -U postgres -d your_db -f postgres/core_schema.sql
-   ```
-
-3. Configure your `.env` file inside `mindquarry/` with your `DATABASE_URL`.
-   The app sets `search_path` to `mq_public,mqauth` in code, so auth and app tables resolve consistently.
-   Existing installations should also apply `postgres/psql_update.sql` to pick up moderation-policy, archive, validation, and deleted-user schema changes.
-
-4. Review `mindquarry/mq_config.toml` if you want to adjust feed limits, search page sizes, mutation/search rate limits, notification polling, cookie notice text, or the unique query-view window.
-
-5. Start the dev server:
-   ```bash
-   npm run dev
-   ```
-
-6. Run tests or the full verification pass before or after larger changes:
-   ```bash
-   npm run test:coverage
-   npm run test:e2e
-   npm run verify
-   ```
-
-### Existing Installation Updates
-
-If you already have a running instance and we add new packages or schema changes, do the following:
-
-1. Update packages:
-   ```bash
-   cd mindquarry
-   npm install
-   ```
-
-2. Safely apply schema updates (uses `IF NOT EXISTS`):
-   ```bash
-   psql -U postgres -d your_db -f postgres/psql_update.sql
-   ```
-
-3. The update path now seeds a sentinel deleted-user account with id `-1` and adds moderation-policy, validation, archive, and hide-state columns used by the app runtime.
-
-4. If you want legacy environments to pick up the latest visibility and search columns instead of relying on app-side fallbacks, rerun the non-auth scratch-safe scripts as needed:
-   ```bash
-   psql -U postgres -d your_db -f postgres/extensions.sql
-   psql -U postgres -d your_db -f postgres/indexes.sql
-   ```
-
-## Where To Work
-
-- See `mindquarry/README.md` for app-specific setup.
-- See `postgres/README.md` for the SQL folder purpose.
-- See the README files under `mindquarry/src/` for folder-level guidance.
-
-## Copilot Customization
-
-Project instructions live in `.github/`:
-
-- `.github/copilot-instructions.md`: repo-wide engineering guidance.
-- `.github/instructions/*.instructions.md`: folder-scoped instructions for app, components, lib, and SQL work.
+- App overview: [mindquarry/README.md](mindquarry/README.md)
+- PostgreSQL setup: [postgres/README.md](postgres/README.md)
+- Source folder overview: [mindquarry/src/README.md](mindquarry/src/README.md)
+- Route-layer notes: [mindquarry/src/app/README.md](mindquarry/src/app/README.md)
+- Shared component notes: [mindquarry/src/components/README.md](mindquarry/src/components/README.md)
+- Shared library notes: [mindquarry/src/lib/README.md](mindquarry/src/lib/README.md)
 
 ## VS Code Tasks
 
-Workspace tasks live in `.vscode/tasks.json` and wrap the current app scripts:
+Workspace tasks in `.vscode/tasks.json` wrap the common developer flows:
 
-- Build
+- build
 - Jest
-- Jest Coverage
+- Jest coverage
 - Playwright
-- Verify
-- Verify then Dev
-- Session cleanup one-shot and watch tasks
+- verify
+- verify then dev
+- session cleanup one-shot and watch tasks

@@ -41,13 +41,13 @@ describe('Login page', () => {
     render(<LoginPage />)
 
     expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
-    expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
   })
 
   it('renders the password reset hint and sign-up link', () => {
     render(<LoginPage />)
 
-    expect(screen.getByText('Password reset is not available yet.')).toBeInTheDocument()
+    expect(screen.getByText('Password reset lives in settings.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign up' })).toHaveAttribute('href', '/signup')
   })
 
@@ -69,7 +69,7 @@ describe('Login page', () => {
 
     fireEvent.change(screen.getByLabelText('Username or Email'), { target: { value: 'alice' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery staple' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => {
       expect(usernameSignIn).toHaveBeenCalledWith({ username: 'alice', password: 'correct horse battery staple' })
@@ -85,7 +85,7 @@ describe('Login page', () => {
 
     fireEvent.change(screen.getByLabelText('Username or Email'), { target: { value: 'alice@example.com' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery staple' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => {
       expect(emailSignIn).toHaveBeenCalledWith({ email: 'alice@example.com', password: 'correct horse battery staple' })
@@ -101,7 +101,7 @@ describe('Login page', () => {
 
     fireEvent.change(screen.getByLabelText('Username or Email'), { target: { value: 'alice' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong password' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument()
     expect(replace).not.toHaveBeenCalled()

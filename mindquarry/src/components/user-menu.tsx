@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { User as UserIcon, LogOut, Settings, ChevronDown, Bell, MessageSquareMore } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -20,6 +20,22 @@ type UserMenuUser = {
 export default function UserMenu({ user }: { user?: UserMenuUser | null }) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!menuRef.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handlePointerDown);
+        return () => document.removeEventListener("mousedown", handlePointerDown);
+    }, [open]);
 
     const handleLogout = async () => {
         await authClient.signOut();
@@ -31,7 +47,7 @@ export default function UserMenu({ user }: { user?: UserMenuUser | null }) {
     if (!user) {
         return (
             <div className="flex gap-2">
-                <Link href="/login" className="soft-button">Login</Link>
+                <Link href="/login" className="soft-button">Sign in</Link>
                 <Link href="/signup" className="soft-button-primary">Sign up</Link>
             </div>
         );
@@ -42,7 +58,7 @@ export default function UserMenu({ user }: { user?: UserMenuUser | null }) {
     const profileHref = profileSlug ? `/users/${encodeURIComponent(profileSlug)}` : "/settings";
 
     return (
-        <div className="relative flex items-center">
+        <div ref={menuRef} className="relative flex items-center">
             <Link href={profileHref} className="group flex items-center gap-3 rounded-full border border-border/70 bg-card px-2 py-1.5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-400/60 hover:bg-card">
                 <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/70 bg-muted">
                     {user.image ? (

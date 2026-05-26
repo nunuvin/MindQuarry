@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test('login page renders the sign-in heading', async ({ page }) => {
   await page.goto('/login')
 
-  await expect(page.getByRole('heading', { name: 'Sign in to your account' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
 })
 
 test('login page keeps the identifier and password inputs visible', async ({ page }) => {
@@ -32,7 +32,7 @@ test('login page toggles password visibility', async ({ page }) => {
 test('login page renders the submit control', async ({ page }) => {
   await page.goto('/login')
 
-  await expect(page.getByRole('button', { name: 'Login' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 })
 
 test('signup page renders the account creation heading', async ({ page }) => {

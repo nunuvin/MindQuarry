@@ -573,10 +573,61 @@ export default async function QueryDiscussionPage({
                     <VoteControls score={query.score} action={voteQuery} />
                 </div>
                 <div className="flex-1 peer-checked:opacity-100">
-                    <h1 className="font-display text-3xl font-semibold tracking-tight text-balance">{query.title}</h1>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {query.is_archived && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">Archived</span>}
-                        {query.validation_status !== "approved" && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">Pending Review</span>}
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h1 className="font-display text-3xl font-semibold tracking-tight text-balance">{query.title}</h1>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {query.is_archived && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">Archived</span>}
+                                {query.validation_status !== "approved" && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">Pending Review</span>}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 self-start">
+                            {session?.user && (
+                                <form action={toggleSubscription}>
+                                    <button type="submit" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-sky-400/70 hover:text-sky-600">
+                                        {subscription ? "Unfollow Thread" : "Follow Thread"}
+                                    </button>
+                                </form>
+                            )}
+                            <details className="relative">
+                                <summary className="cursor-pointer list-none rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-sky-400/70 hover:text-sky-600">
+                                    Actions
+                                </summary>
+                                <div className="absolute right-0 top-12 z-20 w-[min(26rem,80vw)] rounded-[24px] border border-border/70 bg-card p-4 shadow-lg">
+                                    <div className="space-y-3 text-sm">
+                                        {session?.user?.id === query.author_id && (
+                                            <details>
+                                                <summary className="cursor-pointer font-semibold text-sky-600 hover:underline">Edit Query</summary>
+                                                <div className="mt-4 rounded-[20px] border border-border/70 bg-card p-5">
+                                                    <SubmitQueryForm
+                                                        submitAction={editQuery}
+                                                        availableTags={availableTags}
+                                                        allowCustomTags={Boolean(quarry.allow_user_tags)}
+                                                        initialTitle={query.title || ""}
+                                                        initialBody={query.body || ""}
+                                                        selectedTagIds={queryTags.map((tag) => tag.id)}
+                                                        submitLabel="Save Query"
+                                                        submittingLabel="Saving..."
+                                                    />
+                                                </div>
+                                            </details>
+                                        )}
+                                        {(session?.user?.id === query.author_id || isQuarryAdmin) && (
+                                            <form action={deleteQueryAction}>
+                                                <button type="submit" className="font-semibold text-red-500 hover:underline">Delete Query</button>
+                                            </form>
+                                        )}
+                                        {isQuarryAdmin && (
+                                            <form action={toggleArchiveQuery}>
+                                                <button type="submit" className="font-semibold text-amber-600 hover:underline">{query.is_archived ? "Unarchive Query" : "Archive Query"}</button>
+                                            </form>
+                                        )}
+                                        {canModerate && <Link href={`/q/${quarry.name}/mod/queue`} className="block font-semibold text-sky-600 hover:underline">Open Mod Queue</Link>}
+                                        <Link href={`/q/${quarry.name}/query/${query.id}/report`} className="block font-semibold text-red-500 hover:underline">Report Query</Link>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </div>
                     {queryTags.length > 0 && (
                         <div className="mt-4 flex flex-wrap gap-2">
@@ -589,44 +640,6 @@ export default async function QueryDiscussionPage({
                     )}
                     <div className="mb-6 flex flex-col gap-3 border-b border-border/70 pb-4 pt-4 text-sm font-semibold text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                         <span>Asked by {query.displayUsername || query.username || query.name} on {query.created_at ? new Date(query.created_at).toLocaleDateString() : ''} • {query.views} views</span>
-                        <div className="flex items-center gap-3">
-                            {session?.user && (
-                                <form action={toggleSubscription}>
-                                    <button type="submit" className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-foreground hover:border-sky-400/70 hover:text-sky-600">
-                                        {subscription ? "Unfollow Thread" : "Follow Thread"}
-                                    </button>
-                                </form>
-                            )}
-                            {session?.user?.id === query.author_id && (
-                                <details>
-                                    <summary className="cursor-pointer text-sky-600 hover:underline">Edit Question</summary>
-                                    <div className="mt-4 w-full max-w-3xl rounded-[20px] border border-border/70 bg-card p-5">
-                                        <SubmitQueryForm
-                                            submitAction={editQuery}
-                                            availableTags={availableTags}
-                                            allowCustomTags={Boolean(quarry.allow_user_tags)}
-                                            initialTitle={query.title || ""}
-                                            initialBody={query.body || ""}
-                                            selectedTagIds={queryTags.map((tag) => tag.id)}
-                                            submitLabel="Save Question"
-                                            submittingLabel="Saving..."
-                                        />
-                                    </div>
-                                </details>
-                            )}
-                            {(session?.user?.id === query.author_id || isQuarryAdmin) && (
-                                <form action={deleteQueryAction}>
-                                    <button type="submit" className="text-red-500 hover:underline">Delete Query</button>
-                                </form>
-                            )}
-                            {isQuarryAdmin && (
-                                <form action={toggleArchiveQuery}>
-                                    <button type="submit" className="text-amber-600 hover:underline">{query.is_archived ? "Unarchive" : "Archive"}</button>
-                                </form>
-                            )}
-                            {canModerate && <Link href={`/q/${quarry.name}/mod/queue`} className="text-sky-600 hover:underline">Mod Queue</Link>}
-                            <Link href={`/q/${quarry.name}/query/${query.id}/report`} className="text-red-500 hover:underline">Report</Link>
-                        </div>
                     </div>
                     {resolvedSearchParams.queued === "answer" && (
                         <div className="mb-4 rounded-[20px] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-300">

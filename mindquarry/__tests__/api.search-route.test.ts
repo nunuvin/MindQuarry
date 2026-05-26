@@ -1,9 +1,14 @@
 import { GET } from '@/app/api/search/route'
 
 const getSession = jest.fn()
+const isGlobalAdmin = jest.fn()
 const isRateLimited = jest.fn()
 const runSearch = jest.fn()
 const buildSearchRateLimitKey = jest.fn()
+
+jest.mock('@/lib/admin', () => ({
+  isGlobalAdmin: (...args: unknown[]) => isGlobalAdmin(...args),
+}))
 
 jest.mock('@/lib/auth', () => ({
   auth: {
@@ -25,6 +30,7 @@ jest.mock('@/lib/search', () => ({
 describe('GET /api/search', () => {
   beforeEach(() => {
     getSession.mockReset()
+    isGlobalAdmin.mockReset()
     isRateLimited.mockReset()
     runSearch.mockReset()
     buildSearchRateLimitKey.mockReset()
@@ -32,6 +38,7 @@ describe('GET /api/search', () => {
 
   it('returns a rate-limited response when the threshold is exceeded', async () => {
     getSession.mockResolvedValue({ user: { id: 'user-1' } })
+    isGlobalAdmin.mockResolvedValue(false)
     buildSearchRateLimitKey.mockReturnValue('fingerprint-1')
     isRateLimited.mockReturnValue(true)
 
@@ -48,12 +55,13 @@ describe('GET /api/search', () => {
 
   it('passes search pagination parameters through to the shared search helper', async () => {
     getSession.mockResolvedValue({ user: { id: 'user-2' } })
+    isGlobalAdmin.mockResolvedValue(true)
     buildSearchRateLimitKey.mockReturnValue('fingerprint-2')
     isRateLimited.mockReturnValue(false)
     runSearch.mockResolvedValue({
       scope: 'users',
       term: 'alice',
-      users: { items: [{ id: 'u1', username: 'alice', displayUsername: 'Alice', name: 'Alice', image: null }], nextOffset: 10 },
+      users: { items: [{ id: 'u1', username: 'alice', displayUsername: 'Alice', name: 'Alice', image: null, accessLevel: 'admin' }], nextOffset: 10 },
       quarries: { items: [], nextOffset: null },
       queries: { items: [], nextOffset: null },
     })
@@ -67,6 +75,7 @@ describe('GET /api/search', () => {
     expect(runSearch).toHaveBeenCalledWith({
       rawQuery: 'u: "alice"',
       viewerId: 'user-2',
+      viewerIsGlobalAdmin: true,
       mode: 'more',
       section: 'users',
       offset: 5,
@@ -75,7 +84,7 @@ describe('GET /api/search', () => {
     await expect(response.json()).resolves.toEqual({
       scope: 'users',
       term: 'alice',
-      users: { items: [{ id: 'u1', username: 'alice', displayUsername: 'Alice', name: 'Alice', image: null }], nextOffset: 10 },
+      users: { items: [{ id: 'u1', username: 'alice', displayUsername: 'Alice', name: 'Alice', image: null, accessLevel: 'admin' }], nextOffset: 10 },
       quarries: { items: [], nextOffset: null },
       queries: { items: [], nextOffset: null },
     })

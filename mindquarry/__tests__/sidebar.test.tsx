@@ -26,9 +26,9 @@ describe('Sidebar', () => {
   it('renders admin links when the user is a global admin', () => {
     render(<Sidebar isGlobalAdmin />)
 
-    expect(screen.getByText('Settings')).toBeInTheDocument()
+    expect(screen.getByText('Instance Admin')).toBeInTheDocument()
     expect(screen.getByText('Users')).toBeInTheDocument()
-    expect(screen.getByText('Reports')).toBeInTheDocument()
+    expect(screen.getByText('Moderation')).toBeInTheDocument()
   })
 
   it('starts collapsed when the stored preference is true', () => {

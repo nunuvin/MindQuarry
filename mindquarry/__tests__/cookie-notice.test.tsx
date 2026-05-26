@@ -16,7 +16,7 @@ describe('CookieNotice', () => {
   it('renders the configured cookie message when enabled', async () => {
     render(<CookieNotice enabled message="Cookies are used." />)
 
-    expect(await screen.findByText('Cookies are used.')).toBeInTheDocument()
+    expect(await screen.findByText('Cookies are used. By continuing to use MindQuarry, you agree to the terms.')).toBeInTheDocument()
   })
 
   it('dismisses the notice and persists the dismissal', async () => {
@@ -24,7 +24,7 @@ describe('CookieNotice', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Dismiss cookie notice' }))
 
-    expect(screen.queryByText('Cookies are used.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Cookies are used. By continuing to use MindQuarry, you agree to the terms.')).not.toBeInTheDocument()
     expect(window.localStorage.getItem('mq.cookie.notice.dismissed')).toBe('true')
   })
 })

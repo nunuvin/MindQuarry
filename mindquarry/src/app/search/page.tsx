@@ -5,25 +5,31 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     const query = resolvedParams.q || "";
 
     return (
-        <div className="max-w-6xl mx-auto mt-8 p-4">
-            <h1 className="text-3xl font-black uppercase tracking-tight mb-8 border-b-[3px] border-black dark:border-white pb-2">Search Results</h1>
+        <div className="page-shell max-w-6xl">
+            <div className="soft-panel p-6 sm:p-8">
+                <div className="flex flex-col gap-3 border-b border-border/70 pb-6">
+                    <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-400">Search</p>
+                    <h1 className="font-display text-3xl font-semibold tracking-tight">Find quarries, queries, and people</h1>
+                    <p className="max-w-3xl text-sm leading-7 text-muted-foreground">Use <span className="font-semibold text-foreground">u:</span> for users, <span className="font-semibold text-foreground">q:</span> for quarries, and <span className="font-semibold text-foreground">p:</span> or <span className="font-semibold text-foreground">query:</span> for queries.</p>
+                </div>
 
-            <form action="/search" method="GET" className="mb-4 flex gap-4">
-                <input
-                    type="search"
-                    name="q"
-                    defaultValue={query}
-                    className="flex-1 p-4 border-[3px] border-black dark:border-white bg-card outline-none focus:ring-2 focus:ring-blue-500 font-bold text-lg"
-                    placeholder="Search queries, quarries or users."
-                />
-                <button type="submit" className="px-8 bg-black text-white dark:bg-white dark:text-black font-black uppercase border-[3px] border-black dark:border-white shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] cursor-pointer hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all">
-                    Search
-                </button>
-            </form>
+                <form action="/search" method="GET" className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <input
+                        type="search"
+                        name="q"
+                        defaultValue={query}
+                        className="h-12 flex-1 rounded-full border border-border/70 bg-card px-5 text-sm font-medium outline-none transition focus:ring-2 focus:ring-sky-500 sm:text-base"
+                        placeholder="Search queries, quarries, or users"
+                    />
+                    <button type="submit" className="soft-button-primary justify-center rounded-full px-6 py-3">
+                        Search
+                    </button>
+                </form>
 
-            <p className="mb-8 text-sm font-semibold text-muted-foreground">Use <span className="text-foreground">u:</span> for users, <span className="text-foreground">q:</span> for quarries, or <span className="text-foreground">query:</span> for threads. Example: <span className="text-foreground">u: &quot;alice&quot;</span>.</p>
-
-            <SearchResultsClient initialQuery={query} />
+                <div className="mt-8">
+                    <SearchResultsClient initialQuery={query} />
+                </div>
+            </div>
         </div>
     );
 }

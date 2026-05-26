@@ -1,21 +1,28 @@
 # Lib Folder
 
-`src/lib/` contains shared application services and integration code.
+`src/lib/` contains the shared services and domain logic that the routes build on.
 
-## What Is Here Today
+## What Lives Here
 
-- `auth.ts`: Better Auth server configuration.
-- `auth-client.ts`: Better Auth client instance for React usage.
-- `authHelpers.ts`: narrow auth/session helpers for server code.
-- `db.ts`: Kysely database connection and auth table typings.
-- `pgListener.ts`: PostgreSQL listener wiring for live chat updates.
-- `rateLimit.ts`: in-process rate limiting helpers.
-- `settings.ts`: persisted site settings access.
-- `utils.ts`: general utility helpers including rich-text previewing and UUID generation.
-- `votes.ts`: shared query and answer voting logic.
+- auth server and client wiring
+- Kysely database types and connection setup
+- moderation, posting-policy, and admin helpers
+- search, visibility, voting, notification, and messaging support
+- rate limiting and settings access
+- general utility helpers used across multiple routes
 
-## Conventions
+## Important Modules
 
-- Keep external service setup and shared helpers here.
-- Keep database typing aligned with the SQL schema in `postgres/`.
-- Avoid moving route-specific presentation logic into this folder.
+- `auth.ts` and `auth-client.ts`: Better Auth integration
+- `db.ts`: typed Kysely database contract
+- `moderation.ts`: quarry roles, posting policies, and review behavior
+- `search.ts`: scoped search parsing, access-aware result filtering, and fallback logic for older schemas
+- `content.ts`: shared mutation helpers for queries, answers, and chat messages
+- `admin.ts`: instance-admin checks
+- `visibility.ts`: quarry/profile visibility rules
+
+## Expectations
+
+- Keep shared rules here instead of scattering them across route files.
+- Keep the TypeScript database contract aligned with the SQL in `postgres/`.
+- Keep this folder free of route-specific presentation code.

@@ -143,6 +143,11 @@ export default async function UserSettingsPage() {
                     </button>
                 </form>
 
+                <div className="mt-10 rounded-[24px] border border-border/70 bg-muted/20 p-6">
+                    <h2 className="font-display text-xl font-semibold tracking-tight">Security</h2>
+                    <p className="mt-3 text-sm leading-7 text-muted-foreground">Password reset belongs here instead of the sign-in page. The UI is reserved here now, but the actual reset flow is still pending implementation.</p>
+                </div>
+
                 <div className="mt-10 rounded-[24px] border border-red-500/30 bg-red-500/5 p-6">
                     <h2 className="font-display text-xl font-semibold tracking-tight text-red-600">Delete Account</h2>
                     <p className="mt-3 text-sm leading-7 text-muted-foreground">Deleting your account removes your login and profile data. Existing queries, answers, and direct messages are preserved under the deleted-user placeholder.</p>

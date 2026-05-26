@@ -11,7 +11,7 @@ describe('Search page', () => {
 
     render(Component)
 
-    expect(screen.getByPlaceholderText('Search queries, quarries or users.')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search queries, quarries, or users')).toBeInTheDocument()
     expect(screen.getByText(/Use/)).toBeInTheDocument()
     expect(screen.getByText('Results payload: empty')).toBeInTheDocument()
   })

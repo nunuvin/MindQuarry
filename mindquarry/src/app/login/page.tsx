@@ -39,19 +39,13 @@ export default function LoginPage() {
 
     return (
         <div className="page-shell flex min-h-[calc(100vh-5rem)] items-center justify-center">
-            <div className="soft-panel grid w-full max-w-5xl overflow-hidden lg:grid-cols-[1.05fr_0.95fr]">
-                <div className="bg-gradient-to-br from-sky-500/14 via-background to-background px-8 py-10 sm:px-10 sm:py-12">
-                    <p className="font-display text-xs font-semibold uppercase tracking-[0.24em] text-sky-600 dark:text-sky-400">Welcome back</p>
-                    <h1 className="font-display mt-4 text-4xl font-semibold tracking-tight text-balance">Sign in and pick up where your conversations left off.</h1>
-                    <p className="mt-4 max-w-md text-sm leading-7 text-muted-foreground">MindQuarry works best when discovery, messaging, and moderation feel quick. This keeps the layout you liked while softening the heavier page chrome around it.</p>
-                </div>
-
+            <div className="soft-panel w-full max-w-xl overflow-hidden">
                 <form
                     onSubmit={handleLogin}
                     className="flex flex-col gap-6 px-8 py-10 sm:px-10 sm:py-12"
                 >
                     <div>
-                        <h2 className="font-display text-2xl font-semibold tracking-tight">Sign in to your account</h2>
+                        <h1 className="font-display text-3xl font-semibold tracking-tight">Sign in</h1>
                         <p className="mt-2 text-sm text-muted-foreground">Use your username or email to continue.</p>
                     </div>
 
@@ -92,9 +86,9 @@ export default function LoginPage() {
                         </div>
                     </div>
                     {error && <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">{error}</div>}
-                    <Button type="submit" className="h-12 rounded-full bg-sky-600 text-white hover:bg-sky-700">Login</Button>
+                    <Button type="submit" className="h-12 rounded-full bg-sky-600 text-white hover:bg-sky-700">Sign in</Button>
                     <div className="flex justify-between items-center mt-2">
-                        <span className="text-sm text-muted-foreground">Password reset is not available yet.</span>
+                        <span className="text-sm text-muted-foreground">Password reset lives in settings.</span>
                         <Link href="/signup" className="text-sm text-primary hover:underline">Sign up</Link>
                     </div>
                 </form>

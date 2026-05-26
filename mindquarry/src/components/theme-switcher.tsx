@@ -8,8 +8,11 @@ export default function ThemeSwitcher() {
     // Detect system theme on mount
     useEffect(() => {
         if (typeof window !== "undefined") {
+            const prefersDark = typeof window.matchMedia === "function"
+                ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                : false;
             const isDark = document.documentElement.classList.contains("dark") ||
-                window.matchMedia("(prefers-color-scheme: dark)").matches;
+                prefersDark;
             setTheme(isDark ? "dark" : "light");
         }
     }, []);
@@ -18,47 +21,30 @@ export default function ThemeSwitcher() {
     const toggleTheme = () => {
         const newTheme = theme === "light" ? "dark" : "light";
         setTheme(newTheme);
+        window.localStorage.setItem("mq.theme", newTheme);
         if (newTheme === "dark") {
             document.documentElement.classList.add("dark");
         } else {
             document.documentElement.classList.remove("dark");
         }
     };
-    // Icon button: no border, no extra background, icon only
-    const iconButton =
-        "h-9 w-9 flex items-center justify-center p-0 rounded-full transition-colors duration-200 border";
-
-    // No hover background or color change
-    const sidebarHighlight = "";
 
     return (
         <button
             aria-label="Toggle theme"
             onClick={toggleTheme}
             className={cn(
-                iconButton,
-                "theme-switcher-btn focus:outline-none focus:ring-2 focus:ring-ring group",
-                sidebarHighlight,
-                theme === "light"
-                    ? "bg-neutral-900 border-neutral-900"
-                    : "bg-neutral-100 border-neutral-100"
+                "flex w-full items-center justify-between rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm font-semibold text-foreground shadow-sm transition hover:border-sky-400/60 hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-ring"
             )}
             type="button"
         >
-            {theme === "light" ? (
-                <Moon
-                    className={cn(
-                        "h-5 w-5 text-white transition-colors duration-200",
-                        "stroke-white fill-none"
-                    )}
-                />
-            ) : (
-                <Sun
-                    className={cn(
-                        "h-5 w-5 text-black transition-colors duration-200"
-                    )}
-                />
-            )}
+            <span>{theme === "light" ? "Use dark theme" : "Use light theme"}</span>
+            <span className={cn(
+                "inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 transition",
+                theme === "light" ? "bg-neutral-950 text-white" : "bg-white text-neutral-900"
+            )}>
+                {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            </span>
         </button>
     );
 

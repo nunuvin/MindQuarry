@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Ellipsis } from "lucide-react";
 import { TipTapEditor } from "@/components/TipTapEditor";
 import { TipTapRenderer } from "@/components/TipTapRenderer";
+import { isDeletedMessageBody } from "@/lib/messageContent";
 import { hasRichTextContent } from "@/lib/utils";
 
 type SendMessageResult = {
@@ -54,6 +56,7 @@ export function ChatClient({
 }) {
     const router = useRouter();
     const bottomRef = useRef<HTMLDivElement>(null);
+    const lastReadMessageIdRef = useRef<string | null>(null);
 
     // Pending messages that failed to send
     const [pendingMessages, setPendingMessages] = useState<{ id: string, body: string }[]>([]);
@@ -62,6 +65,7 @@ export function ChatClient({
     const [isSending, setIsSending] = useState(false);
     const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
     const [hidingMessageId, setHidingMessageId] = useState<string | null>(null);
+    const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
     const upsertPendingMessage = (id: string, body: string) => {
         setPendingMessages((currentMessages) => {
@@ -109,6 +113,7 @@ export function ChatClient({
     const handleDeleteMessage = async (messageId: string) => {
         setSendError("");
         setDeletingMessageId(messageId);
+        setOpenActionMenuId(null);
 
         try {
             const formData = new FormData();
@@ -129,6 +134,7 @@ export function ChatClient({
     const handleHideMessage = async (messageId: string) => {
         setSendError("");
         setHidingMessageId(messageId);
+        setOpenActionMenuId(null);
 
         try {
             const formData = new FormData();
@@ -147,10 +153,36 @@ export function ChatClient({
     };
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-        // Mark as read when messages change and we are viewing them
-        fetch(`/api/chat/${conversationId}/read`, { method: "POST" }).catch(() => {});
-    }, [messages, pendingMessages, conversationId]);
+        if (typeof bottomRef.current?.scrollIntoView === "function") {
+            bottomRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [messages, pendingMessages]);
+
+    useEffect(() => {
+        const latestMessageId = messages[messages.length - 1]?.id;
+
+        const markAsRead = () => {
+            if (!latestMessageId || document.visibilityState !== "visible" || lastReadMessageIdRef.current === latestMessageId) {
+                return;
+            }
+
+            lastReadMessageIdRef.current = latestMessageId;
+            fetch(`/api/chat/${conversationId}/read`, { method: "POST" }).catch(() => {
+                lastReadMessageIdRef.current = null;
+            });
+        };
+
+        markAsRead();
+
+        const handleVisible = () => markAsRead();
+        document.addEventListener("visibilitychange", handleVisible);
+        window.addEventListener("focus", handleVisible);
+
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisible);
+            window.removeEventListener("focus", handleVisible);
+        };
+    }, [conversationId, messages]);
 
     useEffect(() => {
         const evtSource = new EventSource(`/api/chat/${conversationId}/stream`);
@@ -158,7 +190,7 @@ export function ChatClient({
         evtSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                if ((data.type === "new_message" || data.type === "read_receipt") && data.conversationId === conversationId) {
+                if (data.type === "new_message" && data.conversationId === conversationId) {
                     router.refresh();
                 }
             } catch {}
@@ -168,6 +200,18 @@ export function ChatClient({
             evtSource.close();
         };
     }, [conversationId, router]);
+
+    const handleComposerKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+            event.preventDefault();
+            if (!isSending) {
+                void handleSend(composerBody);
+            }
+            return true;
+        }
+
+        return false;
+    };
 
     return (
         <div className="page-shell flex h-[calc(100vh-5rem)] max-w-4xl flex-col">
@@ -182,36 +226,60 @@ export function ChatClient({
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col">
                     {messages.map(msg => {
                         const isMe = msg.sender_id === userId;
+                        const isDeleted = isDeletedMessageBody(msg.body);
+                        const canDelete = (isMe || isGlobalAdmin) && !isDeleted;
+                        const canHide = isGlobalAdmin && !msg.is_hidden && !isDeleted;
+                        const showActions = canDelete || canHide;
                         return (
                             <div key={msg.id} className={`flex flex-col max-w-[80%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}>
-                                <div className="flex gap-2 items-center mb-1">
+                                <div className="mb-1 flex items-center gap-2">
                                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                                         {isMe ? 'You' : (msg.displayUsername || msg.username || msg.name)}
                                     </span>
+                                    {showActions && (
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                aria-label={openActionMenuId === msg.id ? "Close message actions" : "Open message actions"}
+                                                onClick={() => setOpenActionMenuId((currentId) => currentId === msg.id ? null : msg.id)}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-card/80 text-muted-foreground transition hover:text-foreground"
+                                            >
+                                                <Ellipsis className="h-4 w-4" />
+                                            </button>
+                                            {openActionMenuId === msg.id && (
+                                                <div className={`absolute top-9 z-20 min-w-40 rounded-2xl border border-border/70 bg-card p-2 shadow-lg ${isMe ? 'right-0' : 'left-0'}`}>
+                                                    {canDelete && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteMessage(msg.id)}
+                                                            disabled={deletingMessageId === msg.id}
+                                                            className="flex w-full rounded-xl px-3 py-2 text-left text-xs font-bold uppercase tracking-[0.16em] text-red-500 transition hover:bg-muted disabled:opacity-60"
+                                                        >
+                                                            {deletingMessageId === msg.id ? "Deleting..." : "Delete message"}
+                                                        </button>
+                                                    )}
+                                                    {canHide && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleHideMessage(msg.id)}
+                                                            disabled={hidingMessageId === msg.id}
+                                                            className="flex w-full rounded-xl px-3 py-2 text-left text-xs font-bold uppercase tracking-[0.16em] text-amber-600 transition hover:bg-muted disabled:opacity-60"
+                                                        >
+                                                            {hidingMessageId === msg.id ? "Hiding..." : "Hide message"}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className={`max-w-full rounded-[22px] border border-border/70 px-4 py-3 text-sm font-medium shadow-sm ${isMe ? 'bg-sky-500/10' : 'bg-card/80'}`}>
-                                    {msg.is_hidden ? <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Message hidden by moderation.</span> : <TipTapRenderer content={msg.body || ""} />}
-                                </div>
-                                <div className="mt-2 flex gap-3">
-                                    {(isMe || isGlobalAdmin) && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeleteMessage(msg.id)}
-                                            disabled={deletingMessageId === msg.id}
-                                            className="text-[11px] font-bold uppercase tracking-[0.16em] text-red-500 hover:underline disabled:opacity-60"
-                                        >
-                                            {deletingMessageId === msg.id ? "Deleting..." : "Delete"}
-                                        </button>
-                                    )}
-                                    {isGlobalAdmin && !msg.is_hidden && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleHideMessage(msg.id)}
-                                            disabled={hidingMessageId === msg.id}
-                                            className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-600 hover:underline disabled:opacity-60"
-                                        >
-                                            {hidingMessageId === msg.id ? "Hiding..." : "Hide"}
-                                        </button>
+                                    {msg.is_hidden ? (
+                                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Message hidden by moderation.</span>
+                                    ) : isDeleted ? (
+                                        <span className="italic text-muted-foreground/80">message deleted</span>
+                                    ) : (
+                                        <TipTapRenderer content={msg.body || ""} />
                                     )}
                                 </div>
                                 {isMe && otherParticipants.some(p => p.last_read_at && msg.created_at && new Date(p.last_read_at) >= new Date(msg.created_at)) && (
@@ -250,9 +318,9 @@ export function ChatClient({
 
                 <div className="border-t border-border/70 bg-muted/20 p-4">
                     <form action={(formData) => handleSend((formData.get("body") as string) || composerBody)} className="space-y-4">
-                        <TipTapEditor name="body" value={composerBody} onChange={setComposerBody} placeholder="Type a message, drop in a quote, add a link, or format code..." dense />
+                        <TipTapEditor name="body" value={composerBody} onChange={setComposerBody} onKeyDown={handleComposerKeyDown} placeholder="Type a message, drop in a quote, add a link, or format code..." dense />
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-sm text-muted-foreground">Use the toolbar for quotes, code blocks, links, and structured replies.</p>
+                            <p className="text-sm text-muted-foreground">Press Enter to send. Use Shift+Enter for a new line.</p>
                             <button type="submit" disabled={isSending} className="soft-button-primary min-w-32 justify-center rounded-full px-6 py-3 disabled:cursor-not-allowed disabled:opacity-60">
                                 {isSending ? "Sending..." : "Send"}
                             </button>

@@ -13,6 +13,7 @@ export function TipTapEditor({
     defaultValue = "",
     value,
     onChange,
+    onKeyDown,
     placeholder = "Write something...",
     dense = false,
 }: {
@@ -20,6 +21,7 @@ export function TipTapEditor({
     defaultValue?: string;
     value?: string;
     onChange?: (value: string) => void;
+    onKeyDown?: (event: KeyboardEvent) => boolean | void;
     placeholder?: string;
     dense?: boolean;
 }) {
@@ -45,6 +47,9 @@ export function TipTapEditor({
         editorProps: {
             attributes: {
                 class: `${dense ? 'min-h-[96px]' : 'min-h-[160px]'} prose prose-slate dark:prose-invert max-w-none focus:outline-none`,
+            },
+            handleKeyDown: (_view, event) => {
+                return onKeyDown?.(event) === true;
             },
         },
         onUpdate: ({ editor: currentEditor }) => {
